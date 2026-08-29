@@ -16,4 +16,3 @@ npm run dev
 - `npm run typecheck` — Run TypeScript type-checking
 - `npm run test` — Run test suite
 
-*Detailed documentation will be added in Phase 8.*

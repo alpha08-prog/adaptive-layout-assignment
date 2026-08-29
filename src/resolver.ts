@@ -1,7 +1,47 @@
-// resolver.ts — Pure TypeScript constraint resolution engine
 import type { AdSpec, AdElement, ElementRole } from "./spec.ts";
 import type { SurfaceProfile } from "./surfaces.ts";
-import type { TextMeasurer } from "./measure.ts";
+
+export type TextMeasurer = (
+  text: string,
+  fontSize: number
+) => { width: number; height: number };
+
+/**
+ * Deterministic mock text measurer for headless Node environments and tests.
+ */
+export const mockTextMeasurer: TextMeasurer = (text: string, fontSize: number) => {
+  const chars = text ? text.length : 0;
+  return {
+    width: Math.ceil(chars * fontSize * 0.6),
+    height: Math.ceil(fontSize * 1.2),
+  };
+};
+
+/**
+ * In-browser canvas-based text measurer with headless fallback.
+ */
+let cachedCanvasCtx: CanvasRenderingContext2D | null = null;
+export const domTextMeasurer: TextMeasurer = (text: string, fontSize: number) => {
+  if (typeof document !== "undefined") {
+    try {
+      if (!cachedCanvasCtx) {
+        const canvas = document.createElement("canvas");
+        cachedCanvasCtx = canvas.getContext("2d");
+      }
+      if (cachedCanvasCtx) {
+        cachedCanvasCtx.font = `${fontSize}px sans-serif`;
+        const metrics = cachedCanvasCtx.measureText(text || "");
+        return {
+          width: Math.ceil(metrics.width),
+          height: Math.ceil(fontSize * 1.2),
+        };
+      }
+    } catch {
+      // Fallback if canvas context fails
+    }
+  }
+  return mockTextMeasurer(text, fontSize);
+};
 
 export type DegradeKind = "shrunk" | "repositioned" | "dropped";
 
