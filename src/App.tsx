@@ -8,6 +8,7 @@ import {
   type ResolvedLayout,
 } from "./resolver.ts";
 import { renderToDOM } from "./render-dom.ts";
+import { renderLayoutToCanvasElement } from "./render-canvas.ts";
 
 // Canonical Demo Ad Spec
 const demoAdSpec: AdSpec = defineAd({
@@ -158,7 +159,9 @@ export function App() {
   const [customViewingDistance, setCustomViewingDistance] = useState<"near" | "far">("near");
   const [customMinTextSize, setCustomMinTextSize] = useState(20);
 
+  const [rendererType, setRendererType] = useState<"dom" | "canvas">("dom");
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Active surface computation
   const activeSurface = useMemo<SurfaceProfile | null>(() => {
@@ -259,12 +262,25 @@ export function App() {
 
   const { layout, error } = resolutionResult;
 
-  // Mount to DOM via render-dom.ts
+  // Mount to DOM or Canvas depending on selected renderer mode
   useEffect(() => {
-    if (containerRef.current && layout && activeSurface && !error) {
+    if (!layout || !activeSurface || error) return;
+
+    if (rendererType === "dom" && containerRef.current) {
       renderToDOM(layout, demoAdSpec, activeSurface, containerRef.current, { showSafeAreas });
+    } else if (rendererType === "canvas" && canvasRef.current) {
+      renderLayoutToCanvasElement(canvasRef.current, layout, demoAdSpec, activeSurface, {
+        showSafeAreas,
+        onImageLoaded: () => {
+          if (canvasRef.current && layout && activeSurface) {
+            renderLayoutToCanvasElement(canvasRef.current, layout, demoAdSpec, activeSurface, {
+              showSafeAreas,
+            });
+          }
+        },
+      });
     }
-  }, [layout, activeSurface, showSafeAreas, error]);
+  }, [layout, activeSurface, showSafeAreas, error, rendererType]);
 
   // Derived axis & metrics
   const axis = activeSurface ? deriveAxis(activeSurface) : null;
@@ -301,6 +317,34 @@ export function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Renderer Selector Segmented Control (Bonus 2) */}
+          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setRendererType("dom")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                rendererType === "dom"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span>🌐</span>
+              <span>DOM Renderer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRendererType("canvas")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                rendererType === "canvas"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span>🎨</span>
+              <span>Canvas Renderer (Bonus)</span>
+            </button>
+          </div>
+
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-300 cursor-pointer bg-slate-800/80 hover:bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700 transition-colors select-none shadow-sm">
             <input
               type="checkbox"
@@ -377,6 +421,93 @@ export function App() {
                 <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
                   Live Resolver
                 </span>
+              </div>
+
+              {/* Unseen Surface Rehearsal Quick Presets */}
+              <div className="space-y-1.5 pb-2 border-b border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Unseen Geometry Presets:
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomName("In-Car Panoramic HUD");
+                      setCustomWidth(2560);
+                      setCustomHeight(720);
+                      setCustomSafeTop(24);
+                      setCustomSafeRight(60);
+                      setCustomSafeBottom(24);
+                      setCustomSafeLeft(60);
+                      setCustomTouchOnly(true);
+                      setCustomMinTap(56);
+                      setCustomViewingDistance("near");
+                    }}
+                    className="text-[11px] text-left px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 rounded-lg text-slate-300 transition-colors truncate cursor-pointer font-medium"
+                    title="2560x720 • Touch (56px) • Horizontal-Band"
+                  >
+                    🚗 In-Car HUD (2560×720)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomName("Smart Fridge Door");
+                      setCustomWidth(1080);
+                      setCustomHeight(1920);
+                      setCustomSafeTop(160);
+                      setCustomSafeRight(40);
+                      setCustomSafeBottom(220);
+                      setCustomSafeLeft(40);
+                      setCustomTouchOnly(true);
+                      setCustomMinTap(48);
+                      setCustomViewingDistance("near");
+                    }}
+                    className="text-[11px] text-left px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 rounded-lg text-slate-300 transition-colors truncate cursor-pointer font-medium"
+                    title="1080x1920 • Touch (48px) • Vertical Stack"
+                  >
+                    🧊 Smart Fridge (1080×1920)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomName("Stadium Jumbotron");
+                      setCustomWidth(3840);
+                      setCustomHeight(1080);
+                      setCustomSafeTop(48);
+                      setCustomSafeRight(96);
+                      setCustomSafeBottom(48);
+                      setCustomSafeLeft(96);
+                      setCustomTouchOnly(false);
+                      setCustomViewingDistance("far");
+                      setCustomMinTextSize(36);
+                    }}
+                    className="text-[11px] text-left px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 rounded-lg text-slate-300 transition-colors truncate cursor-pointer font-medium"
+                    title="3840x1080 • Far View (36px) • Horizontal-Band"
+                  >
+                    🏟️ Jumbotron (3840×1080)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomName("Wearable Micro HUD");
+                      setCustomWidth(280);
+                      setCustomHeight(280);
+                      setCustomSafeTop(12);
+                      setCustomSafeRight(12);
+                      setCustomSafeBottom(12);
+                      setCustomSafeLeft(12);
+                      setCustomTouchOnly(true);
+                      setCustomMinTap(40);
+                      setCustomViewingDistance("near");
+                    }}
+                    className="text-[11px] text-left px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 rounded-lg text-slate-300 transition-colors truncate cursor-pointer font-medium"
+                    title="280x280 • Touch (40px) • Degradation Test"
+                  >
+                    ⌚ Micro HUD (280×280)
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -585,15 +716,28 @@ export function App() {
                   height: `${activeSurface.height * scale}px`,
                 }}
               >
-                <div
-                  ref={containerRef}
-                  style={{
-                    width: `${activeSurface.width}px`,
-                    height: `${activeSurface.height}px`,
-                    transform: `scale(${scale})`,
-                    transformOrigin: "top left",
-                  }}
-                />
+                {rendererType === "dom" ? (
+                  <div
+                    ref={containerRef}
+                    style={{
+                      width: `${activeSurface.width}px`,
+                      height: `${activeSurface.height}px`,
+                      transform: `scale(${scale})`,
+                      transformOrigin: "top left",
+                    }}
+                  />
+                ) : (
+                  <canvas
+                    ref={canvasRef}
+                    style={{
+                      width: `${activeSurface.width}px`,
+                      height: `${activeSurface.height}px`,
+                      transform: `scale(${scale})`,
+                      transformOrigin: "top left",
+                      display: "block",
+                    }}
+                  />
+                )}
               </div>
             ) : null}
 

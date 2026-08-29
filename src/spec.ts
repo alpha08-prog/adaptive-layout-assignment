@@ -9,7 +9,7 @@ export interface AdElement {
   type: ElementType;
   role: ElementRole;
   priority: Priority;
-  content?: string; // for text-measurement-aware wrapping in Phase 7
+  content?: string;
 }
 
 export interface AdSpec {
