@@ -10,6 +10,7 @@ import {
   LayoutError,
   mockTextMeasurer,
 } from "./resolver.ts";
+import { renderToCanvas } from "./render-canvas.ts";
 
 const testAdSpec: AdSpec = defineAd({
   elements: [
@@ -480,6 +481,107 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
       const layout = resolveLayout(testAdSpec, unseenSmartDisplay, mockTextMeasurer);
       expect(() => assertNoOverlapOrClip(layout, unseenSmartDisplay)).not.toThrow();
     });
+
+    it("resolves an in-car automotive panoramic cockpit HUD (2560x720) with horizontal-band flow and touch floors", () => {
+      const automotiveHUD = defineSurface({
+        name: "in-car-panoramic-hud",
+        width: 2560,
+        height: 720,
+        safeArea: { top: 24, right: 60, bottom: 24, left: 60 },
+        touchOnly: true,
+        minTapTarget: 56,
+      });
+
+      expect(deriveAxis(automotiveHUD)).toBe("horizontal-band");
+
+      const layout = resolveLayout(testAdSpec, automotiveHUD, mockTextMeasurer);
+      expect(() => assertNoOverlapOrClip(layout, automotiveHUD)).not.toThrow();
+
+      const cta = layout.find((e) => e.id === "cta")!;
+      expect(cta.visible).toBe(true);
+      expect(cta.height).toBeGreaterThanOrEqual(56);
+      expect(cta.width).toBeGreaterThanOrEqual(56);
+    });
+
+    it("resolves a smart refrigerator portrait screen door (1080x1920) with asymmetric safe insets", () => {
+      const fridgeDoor = defineSurface({
+        name: "smart-fridge-door",
+        width: 1080,
+        height: 1920,
+        safeArea: { top: 160, right: 40, bottom: 220, left: 40 },
+        touchOnly: true,
+        minTapTarget: 48,
+      });
+
+      expect(deriveAxis(fridgeDoor)).toBe("vertical");
+
+      const layout = resolveLayout(testAdSpec, fridgeDoor, mockTextMeasurer);
+      expect(() => assertNoOverlapOrClip(layout, fridgeDoor)).not.toThrow();
+
+      const visibleEls = layout.filter((e) => e.visible);
+      for (const el of visibleEls) {
+        expect(el.x).toBeGreaterThanOrEqual(fridgeDoor.safeArea!.left);
+        expect(el.y).toBeGreaterThanOrEqual(fridgeDoor.safeArea!.top);
+        expect(el.x + el.width).toBeLessThanOrEqual(fridgeDoor.width - fridgeDoor.safeArea!.right);
+        expect(el.y + el.height).toBeLessThanOrEqual(fridgeDoor.height - fridgeDoor.safeArea!.bottom);
+      }
+    });
+
+    it("resolves an outdoor stadium mega-jumbotron (3840x1080) with far viewing text size floor", () => {
+      const stadiumJumbotron = defineSurface({
+        name: "stadium-jumbotron",
+        width: 3840,
+        height: 1080,
+        safeArea: { top: 48, right: 96, bottom: 48, left: 96 },
+        viewingDistance: "far",
+        minTextSize: 36,
+      });
+
+      const layout = resolveLayout(testAdSpec, stadiumJumbotron, mockTextMeasurer);
+      expect(() => assertNoOverlapOrClip(layout, stadiumJumbotron)).not.toThrow();
+
+      const headline = layout.find((e) => e.id === "headline")!;
+      expect(headline.visible).toBe(true);
+      expect(headline.fontSize).toBeGreaterThanOrEqual(36);
+    });
+
+    it("resolves a wearable micro HUD (280x280) without overlap and handles tight micro HUD (260x180) with graceful priority degradation", () => {
+      const wearableMicroHUD = defineSurface({
+        name: "wearable-micro-hud",
+        width: 280,
+        height: 280,
+        safeArea: { top: 12, right: 12, bottom: 12, left: 12 },
+        touchOnly: true,
+        minTapTarget: 40,
+      });
+
+      const layout = resolveLayout(testAdSpec, wearableMicroHUD, mockTextMeasurer);
+      expect(() => assertNoOverlapOrClip(layout, wearableMicroHUD)).not.toThrow();
+
+      // Priority 1 elements must always remain visible and within touch floor
+      const headline = layout.find((e) => e.id === "headline")!;
+      const cta = layout.find((e) => e.id === "cta")!;
+      expect(headline.visible).toBe(true);
+      expect(cta.visible).toBe(true);
+      expect(cta.height).toBeGreaterThanOrEqual(40);
+
+      // On a tighter micro display (260x180), lowest priority element (branding) drops
+      const tightMicroHUD = defineSurface({
+        name: "tight-micro-hud",
+        width: 260,
+        height: 180,
+        safeArea: { top: 8, right: 8, bottom: 8, left: 8 },
+        touchOnly: true,
+        minTapTarget: 40,
+      });
+
+      const tightLayout = resolveLayout(testAdSpec, tightMicroHUD, mockTextMeasurer);
+      expect(() => assertNoOverlapOrClip(tightLayout, tightMicroHUD)).not.toThrow();
+
+      const tightLogo = tightLayout.find((e) => e.id === "logo")!;
+      expect(tightLogo.visible).toBe(false);
+      expect(tightLogo.degraded).toBe("dropped");
+    });
   });
 
   describe("assertNoOverlapOrClip invariant validator", () => {
@@ -511,6 +613,95 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
       ];
 
       expect(() => assertNoOverlapOrClip(nonCollidingWithHidden, squareKiosk)).not.toThrow();
+    });
+  });
+
+  describe("Phase 7 Bonus: Canvas Renderer (render-canvas.ts)", () => {
+    function createMockCanvasContext() {
+      const drawnElements: { type: string; args: unknown[] }[] = [];
+      const mockGradient = {
+        addColorStop: () => {},
+      };
+
+      const ctx = {
+        fillStyle: "#000000",
+        strokeStyle: "#000000",
+        lineWidth: 1,
+        font: "16px sans-serif",
+        textAlign: "left" as CanvasTextAlign,
+        textBaseline: "top" as CanvasTextBaseline,
+        save: () => drawnElements.push({ type: "save", args: [] }),
+        restore: () => drawnElements.push({ type: "restore", args: [] }),
+        fillRect: (x: number, y: number, w: number, h: number) => {
+          drawnElements.push({ type: "fillRect", args: [x, y, w, h] });
+        },
+        strokeRect: (x: number, y: number, w: number, h: number) => {
+          drawnElements.push({ type: "strokeRect", args: [x, y, w, h] });
+        },
+        createLinearGradient: () => mockGradient,
+        beginPath: () => drawnElements.push({ type: "beginPath", args: [] }),
+        closePath: () => drawnElements.push({ type: "closePath", args: [] }),
+        moveTo: (x: number, y: number) => drawnElements.push({ type: "moveTo", args: [x, y] }),
+        lineTo: (x: number, y: number) => drawnElements.push({ type: "lineTo", args: [x, y] }),
+        quadraticCurveTo: () => {},
+        fill: () => drawnElements.push({ type: "fill", args: [] }),
+        stroke: () => drawnElements.push({ type: "stroke", args: [] }),
+        clip: () => drawnElements.push({ type: "clip", args: [] }),
+        setLineDash: (segments: number[]) => {
+          drawnElements.push({ type: "setLineDash", args: [segments] });
+        },
+        fillText: (text: string, x: number, y: number) => {
+          drawnElements.push({ type: "fillText", args: [text, x, y] });
+        },
+        measureText: (text: string) => ({
+          width: text.length * 8,
+          actualBoundingBoxAscent: 10,
+          actualBoundingBoxDescent: 2,
+        }),
+        drawImage: () => drawnElements.push({ type: "drawImage", args: [] }),
+      } as unknown as CanvasRenderingContext2D;
+
+      return { ctx, drawnElements };
+    }
+
+    it("renders a resolved layout onto a CanvasRenderingContext2D without throwing", () => {
+      const { ctx, drawnElements } = createMockCanvasContext();
+      const layout = resolveLayout(testAdSpec, mobilePortrait, mockTextMeasurer);
+
+      expect(() => renderToCanvas(layout, testAdSpec, mobilePortrait, ctx, { showSafeAreas: true })).not.toThrow();
+      expect(drawnElements.length).toBeGreaterThan(0);
+
+      // Verify that fillText was called for text elements (headline, price, cta)
+      const textCalls = drawnElements.filter((d) => d.type === "fillText");
+      expect(textCalls.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("omits dropped elements from canvas drawing calls", () => {
+      const { ctx, drawnElements } = createMockCanvasContext();
+      const layout = resolveLayout(testAdSpec, squareKioskTight, mockTextMeasurer);
+
+      // Logo is dropped on tight kiosk
+      const logoEl = layout.find((e) => e.id === "logo")!;
+      expect(logoEl.visible).toBe(false);
+
+      renderToCanvas(layout, testAdSpec, squareKioskTight, ctx);
+
+      // Verify that logo text is never drawn
+      const drawnTexts = drawnElements
+        .filter((d) => d.type === "fillText")
+        .map((d) => String(d.args[0]));
+
+      expect(drawnTexts.some((t) => t.includes("AURA AUDIO"))).toBe(false);
+    });
+
+    it("draws safe area dashes when showSafeAreas is true", () => {
+      const { ctx, drawnElements } = createMockCanvasContext();
+      const layout = resolveLayout(testAdSpec, mobilePortrait, mockTextMeasurer);
+
+      renderToCanvas(layout, testAdSpec, mobilePortrait, ctx, { showSafeAreas: true });
+
+      const dashCalls = drawnElements.filter((d) => d.type === "setLineDash");
+      expect(dashCalls.length).toBeGreaterThan(0);
     });
   });
 });
