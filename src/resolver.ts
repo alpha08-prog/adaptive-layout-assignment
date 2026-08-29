@@ -19,6 +19,17 @@ export interface ResolvedElement {
 export type ResolvedLayout = ResolvedElement[];
 
 /**
+ * Custom Error subclass thrown when layout constraints cannot be satisfied,
+ * or when an overlap / clip invariant is violated.
+ */
+export class LayoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LayoutError";
+  }
+}
+
+/**
  * Aspect ratio thresholds for deriving layout orientation:
  * - aspectRatio < 0.8: Tall surface -> "vertical" column stack.
  * - aspectRatio > 2.2: Ultra-wide surface -> "horizontal-band" flow.
@@ -28,11 +39,16 @@ export const PORTRAIT_ASPECT_THRESHOLD = 0.8;
 export const ULTRA_WIDE_ASPECT_THRESHOLD = 2.2;
 
 /**
- * Layout padding and gap constants (in pixels).
- * All element placement offsets and spacing derive from these named tokens.
+ * Spacing constants (in pixels).
  */
 export const DEFAULT_PADDING = 16;
+export const COMPACT_PADDING = 8;
+export const MIN_PADDING = 4;
+
 export const DEFAULT_GAP = 12;
+export const COMPACT_GAP = 8;
+export const MIN_GAP = 4;
+
 export const MIN_TOUCH_TARGET_DEFAULT = 44;
 export const MIN_TEXT_SIZE_DEFAULT = 12;
 export const FAR_VIEWING_TEXT_MULTIPLIER = 1.5;
@@ -56,55 +72,123 @@ export function deriveAxis(surface: SurfaceProfile): LayoutAxis {
 
 /**
  * Declarative natural sizing configuration keyed by semantic element role.
- * Defines base font sizes, dimensional shares, and minimum physical bounds.
  */
 export interface RoleNaturalConfig {
   baseFontSize?: number;
-  heightShare?: number; // Share of available height (0-1)
-  widthShare?: number;  // Share of available width (0-1)
+  heightShare?: number;
+  widthShare?: number;
   minHeight: number;
   minWidth: number;
-  aspectRatio?: number; // Desired width/height ratio (e.g. 16/9 for hero image)
+  aspectRatio?: number;
 }
 
 export const ROLE_NATURAL_SIZING: Record<ElementRole, RoleNaturalConfig> = {
   hero: {
-    heightShare: 0.42,
+    heightShare: 0.45,
     widthShare: 0.48,
     minHeight: 80,
     minWidth: 80,
     aspectRatio: 16 / 9,
   },
   primary: {
-    baseFontSize: 24,
-    minHeight: 28,
+    baseFontSize: 26,
+    minHeight: 38,
     minWidth: 80,
   },
   secondary: {
-    baseFontSize: 16,
-    minHeight: 20,
+    baseFontSize: 18,
+    minHeight: 28,
     minWidth: 60,
   },
   action: {
     baseFontSize: 16,
-    minHeight: 44,
-    minWidth: 120,
+    minHeight: 50,
+    minWidth: 130,
   },
   branding: {
-    baseFontSize: 14,
-    heightShare: 0.08,
-    minHeight: 24,
-    minWidth: 60,
+    baseFontSize: 16,
+    heightShare: 0.12,
+    minHeight: 38,
+    minWidth: 70,
     aspectRatio: 3 / 1,
   },
 };
 
 /**
- * Calculates the effective font size for a text or button element given surface viewing constraints.
+ * Hard constraint floor definition for an element on a given surface.
+ * Shrinking may NEVER violate these minimum dimensions or font size.
+ */
+export interface ElementConstraintFloor {
+  minWidth: number;
+  minHeight: number;
+  minFontSize?: number;
+}
+
+/**
+ * Computes the absolute hard constraint floor that an element can never shrink below.
+ */
+export function hardConstraintFloor(
+  element: AdElement,
+  surface: SurfaceProfile
+): ElementConstraintFloor {
+  const isInteractive = element.type === "button" || element.role === "action";
+  const isFar = surface.viewingDistance === "far";
+
+  let minTap = 0;
+  if (surface.touchOnly) {
+    minTap = surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT;
+  }
+
+  let minFontSize: number | undefined;
+  if (element.type === "text" || element.type === "button") {
+    if (isFar) {
+      minFontSize = surface.minTextSize ?? 24;
+    } else {
+      minFontSize = surface.minTextSize ?? MIN_TEXT_SIZE_DEFAULT;
+    }
+  }
+
+  if (isInteractive) {
+    const minW = Math.max(minTap, 80);
+    const minH = Math.max(minTap, 36);
+    return {
+      minWidth: minW,
+      minHeight: minH,
+      minFontSize,
+    };
+  }
+
+  if (element.role === "hero") {
+    return {
+      minWidth: 60,
+      minHeight: 40,
+    };
+  }
+
+  if (element.role === "branding") {
+    return {
+      minWidth: 40,
+      minHeight: 20,
+      minFontSize: isFar ? (surface.minTextSize ?? 24) : 10,
+    };
+  }
+
+  // Text elements
+  const fontH = minFontSize ? Math.ceil(minFontSize * 1.2) : 16;
+  return {
+    minWidth: 40,
+    minHeight: fontH,
+    minFontSize,
+  };
+}
+
+/**
+ * Calculates the target font size for a text or button element.
  */
 export function calculateFontSize(
   element: AdElement,
-  surface: SurfaceProfile
+  surface: SurfaceProfile,
+  shrink = false
 ): number | undefined {
   if (element.type !== "text" && element.type !== "button") {
     return undefined;
@@ -112,6 +196,10 @@ export function calculateFontSize(
 
   const roleConfig = ROLE_NATURAL_SIZING[element.role];
   let size = roleConfig.baseFontSize ?? 16;
+
+  if (shrink) {
+    size = Math.max(12, Math.floor(size * 0.85));
+  }
 
   if (surface.viewingDistance === "far") {
     size = Math.round(size * FAR_VIEWING_TEXT_MULTIPLIER);
@@ -121,13 +209,85 @@ export function calculateFontSize(
     size = Math.max(size, surface.minTextSize);
   }
 
+  const floor = hardConstraintFloor(element, surface).minFontSize;
+  if (floor !== undefined) {
+    size = Math.max(size, floor);
+  }
+
   return size;
 }
 
 /**
- * Primary layout resolution function.
- * Given an ad specification and surface profile, produces an immutable ResolvedLayout
- * with absolute coordinates and dimensions for every element.
+ * Asserts that all visible elements in a resolved layout are fully contained
+ * within the surface's safe area and do not overlap one another.
+ * Throws a LayoutError if any invariant is violated.
+ */
+export function assertNoOverlapOrClip(
+  layout: ResolvedLayout,
+  surface: SurfaceProfile
+): void {
+  const safeLeft = surface.safeArea?.left ?? 0;
+  const safeTop = surface.safeArea?.top ?? 0;
+  const safeRight = surface.safeArea?.right ?? 0;
+  const safeBottom = surface.safeArea?.bottom ?? 0;
+
+  const minX = safeLeft;
+  const minY = safeTop;
+  const maxX = surface.width - safeRight;
+  const maxY = surface.height - safeBottom;
+
+  const visibleElements = layout.filter((e) => e.visible);
+  const EPSILON = 0.01;
+
+  // 1. Safe area boundary and dimension check
+  for (const el of visibleElements) {
+    if (el.width <= 0 || el.height <= 0) {
+      throw new LayoutError(
+        `Element "${el.id}" has invalid non-positive dimensions (${el.width}x${el.height}).`
+      );
+    }
+
+    const elRight = el.x + el.width;
+    const elBottom = el.y + el.height;
+
+    if (
+      el.x < minX - EPSILON ||
+      el.y < minY - EPSILON ||
+      elRight > maxX + EPSILON ||
+      elBottom > maxY + EPSILON
+    ) {
+      throw new LayoutError(
+        `Element "${el.id}" bounds [x: ${el.x}, y: ${el.y}, w: ${el.width}, h: ${el.height}] clip outside safe area bounds [minX: ${minX}, minY: ${minY}, maxX: ${maxX}, maxY: ${maxY}].`
+      );
+    }
+  }
+
+  // 2. Overlap check between all pairs of visible elements
+  for (let i = 0; i < visibleElements.length; i++) {
+    for (let j = i + 1; j < visibleElements.length; j++) {
+      const a = visibleElements[i]!;
+      const b = visibleElements[j]!;
+
+      const aRight = a.x + a.width;
+      const aBottom = a.y + a.height;
+      const bRight = b.x + b.width;
+      const bBottom = b.y + b.height;
+
+      const horizontalOverlap = a.x < bRight - EPSILON && aRight > b.x + EPSILON;
+      const verticalOverlap = a.y < bBottom - EPSILON && aBottom > b.y + EPSILON;
+
+      if (horizontalOverlap && verticalOverlap) {
+        throw new LayoutError(
+          `Layout collision detected: element "${a.id}" [x: ${a.x}, y: ${a.y}, w: ${a.width}, h: ${a.height}] overlaps with element "${b.id}" [x: ${b.x}, y: ${b.y}, w: ${b.width}, h: ${b.height}].`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Main resolution engine entry point.
+ * Resolves layout with priority-based degradation cascade and enforces the overlap/clip invariant.
  */
 export function resolveLayout(
   spec: AdSpec,
@@ -139,203 +299,373 @@ export function resolveLayout(
   const safeRight = surface.safeArea?.right ?? 0;
   const safeBottom = surface.safeArea?.bottom ?? 0;
 
-  const contentX = safeLeft + DEFAULT_PADDING;
-  const contentY = safeTop + DEFAULT_PADDING;
-  const contentWidth = Math.max(0, surface.width - safeLeft - safeRight - DEFAULT_PADDING * 2);
-  const contentHeight = Math.max(0, surface.height - safeTop - safeBottom - DEFAULT_PADDING * 2);
+  const rawAvailWidth = surface.width - safeLeft - safeRight;
+  const rawAvailHeight = surface.height - safeTop - safeBottom;
+
+  if (rawAvailWidth <= 0 || rawAvailHeight <= 0) {
+    throw new LayoutError(
+      `Surface "${surface.name}" safe area leaves no usable area (${rawAvailWidth}x${rawAvailHeight}).`
+    );
+  }
+
+  // Pre-check priority 1 elements hard floors
+  const priority1Elements = spec.elements.filter((e) => e.priority === 1);
+  for (const p1 of priority1Elements) {
+    const floor = hardConstraintFloor(p1, surface);
+    if (floor.minWidth > rawAvailWidth || floor.minHeight > rawAvailHeight) {
+      throw new LayoutError(
+        `Priority 1 element "${p1.id}" floor (${floor.minWidth}x${floor.minHeight}) exceeds usable surface bounds (${rawAvailWidth}x${rawAvailHeight}).`
+      );
+    }
+  }
 
   const axis = deriveAxis(surface);
 
-  // In Phase 2, order elements by priority ascending (priority 1 placed first)
-  const elements = [...spec.elements].sort((a, b) => a.priority - b.priority);
-
+  let layout: ResolvedLayout;
   switch (axis) {
     case "vertical":
-      return resolveVerticalLayout(elements, surface, contentX, contentY, contentWidth, contentHeight, measure);
+      layout = resolveVerticalWithCascade(spec.elements, surface, measure);
+      break;
     case "horizontal-band":
-      return resolveHorizontalBandLayout(elements, surface, contentX, contentY, contentWidth, contentHeight, measure);
+      layout = resolveHorizontalBandWithCascade(spec.elements, surface, measure);
+      break;
     case "grid":
-      return resolveGridLayout(elements, surface, contentX, contentY, contentWidth, contentHeight, measure);
+      layout = resolveGridWithCascade(spec.elements, surface, measure);
+      break;
   }
+
+  // Strict structural invariant guarantee
+  assertNoOverlapOrClip(layout, surface);
+
+  return layout;
 }
 
+// ---------------------------------------------------------------------------
+// Cascade Implementations (Shrink -> Compact -> Drop in Priority Order)
+// ---------------------------------------------------------------------------
+
 /**
- * Resolves layout for portrait / vertical column flow.
+ * Vertical / Portrait placement with priority-based degradation cascade.
  */
-function resolveVerticalLayout(
+function resolveVerticalWithCascade(
   elements: AdElement[],
   surface: SurfaceProfile,
-  contentX: number,
-  contentY: number,
-  contentWidth: number,
-  contentHeight: number,
   measure: TextMeasurer
 ): ResolvedLayout {
+  const safeLeft = surface.safeArea?.left ?? 0;
+  const safeTop = surface.safeArea?.top ?? 0;
+  const safeRight = surface.safeArea?.right ?? 0;
+  const safeBottom = surface.safeArea?.bottom ?? 0;
+
+  const availWidth = surface.width - safeLeft - safeRight;
+  const availHeight = surface.height - safeTop - safeBottom;
+
+  // Progressive degradation cascade in priority order:
+  // 1. Natural sizing
+  // 2. Drop lowest priority (Priority 3, e.g. branding)
+  // 3. Drop medium priority (Priority 2, e.g. price/hero)
+  // 4. Shrink essential Priority 1 elements to hard floors
+  const cascadeStages = [
+    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: false, dropP2: false, shrink: false },
+    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true, dropP2: false, shrink: false },
+    { padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true, shrink: false },
+    { padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrink: true },
+  ];
+
+  for (const stage of cascadeStages) {
+    const layout = tryVerticalPlacement(elements, surface, stage, measure, availWidth, availHeight, safeLeft, safeTop);
+    if (layout) {
+      return layout;
+    }
+  }
+
+  throw new LayoutError(
+    `Cannot fit required priority 1 elements within vertical surface "${surface.name}" (${surface.width}x${surface.height}).`
+  );
+}
+
+function tryVerticalPlacement(
+  elements: AdElement[],
+  surface: SurfaceProfile,
+  stage: { padding: number; gap: number; dropP3: boolean; dropP2: boolean; shrink: boolean },
+  measure: TextMeasurer,
+  availWidth: number,
+  availHeight: number,
+  safeLeft: number,
+  safeTop: number
+): ResolvedLayout | null {
+  const contentWidth = availWidth - stage.padding * 2;
+  const contentHeight = availHeight - stage.padding * 2;
+
+  if (contentWidth <= 0 || contentHeight <= 0) return null;
+
   const resolved: ResolvedElement[] = [];
-  let currentY = contentY;
+  const activeElements: AdElement[] = [];
+
+  for (const el of elements) {
+    if (el.priority === 3 && stage.dropP3) {
+      resolved.push({
+        id: el.id,
+        x: safeLeft + stage.padding,
+        y: safeTop + stage.padding,
+        width: 0,
+        height: 0,
+        visible: false,
+        degraded: "dropped",
+      });
+    } else if (el.priority === 2 && stage.dropP2) {
+      resolved.push({
+        id: el.id,
+        x: safeLeft + stage.padding,
+        y: safeTop + stage.padding,
+        width: 0,
+        height: 0,
+        visible: false,
+        degraded: "dropped",
+      });
+    } else {
+      activeElements.push(el);
+    }
+  }
 
   const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
+  const elementBoxes: { element: AdElement; width: number; height: number; fontSize?: number; degraded?: DegradeKind }[] = [];
+  let requiredHeight = 0;
 
-  for (const element of elements) {
-    const roleConfig = ROLE_NATURAL_SIZING[element.role];
-    const fontSize = calculateFontSize(element, surface);
+  for (const el of activeElements) {
+    const roleConfig = ROLE_NATURAL_SIZING[el.role];
+    const floor = hardConstraintFloor(el, surface);
+    const fontSize = calculateFontSize(el, surface, stage.shrink);
 
-    let width = contentWidth;
-    let height = roleConfig.minHeight;
+    let w = contentWidth;
+    let h = roleConfigHeight(el, floor, fontSize, minTap, stage.shrink, measure);
+    let degraded: DegradeKind | undefined = stage.shrink ? "shrunk" : undefined;
 
-    if (element.role === "hero") {
-      const desiredHeight = Math.floor(contentHeight * (roleConfig.heightShare ?? 0.4));
-      height = Math.max(roleConfig.minHeight, desiredHeight);
-      width = contentWidth;
-    } else if (element.type === "text") {
-      const text = element.content ?? element.id;
-      const textDim = measure(text, fontSize ?? 16);
-      height = Math.max(roleConfig.minHeight, textDim.height + 4);
-      width = contentWidth;
-    } else if (element.type === "button" || element.role === "action") {
-      height = Math.max(roleConfig.minHeight, minTap, 44);
-      width = Math.min(contentWidth, Math.max(roleConfig.minWidth, 180));
-    } else if (element.role === "branding") {
-      height = Math.max(roleConfig.minHeight, 32);
-      width = Math.min(contentWidth * 0.5, 120);
+    if (el.role === "hero") {
+      const share = stage.shrink ? 0.3 : (roleConfig.heightShare ?? 0.45);
+      const desiredH = Math.floor(contentHeight * share);
+      h = Math.max(floor.minHeight, desiredH);
+      w = contentWidth;
+    } else if (el.type === "button" || el.role === "action") {
+      w = Math.min(contentWidth, Math.max(floor.minWidth, 180));
+    } else if (el.role === "branding") {
+      w = Math.min(contentWidth * 0.5, 120);
     }
 
-    resolved.push({
-      id: element.id,
-      x: contentX,
-      y: currentY,
-      width,
-      height,
-      fontSize,
-      visible: true,
-    });
+    if (w > contentWidth || h > contentHeight) {
+      return null;
+    }
 
-    currentY += height + DEFAULT_GAP;
+    elementBoxes.push({ element: el, width: w, height: h, fontSize, degraded });
+    requiredHeight += h;
+  }
+
+  requiredHeight += Math.max(0, elementBoxes.length - 1) * stage.gap;
+
+  if (requiredHeight > contentHeight) {
+    return null;
+  }
+
+  let currentY = safeTop + stage.padding;
+  for (const box of elementBoxes) {
+    resolved.push({
+      id: box.element.id,
+      x: safeLeft + stage.padding,
+      y: currentY,
+      width: box.width,
+      height: box.height,
+      fontSize: box.fontSize,
+      visible: true,
+      degraded: box.degraded,
+    });
+    currentY += box.height + stage.gap;
   }
 
   return resolved;
 }
 
 /**
- * Resolves layout for ultra-wide / horizontal band flow.
+ * Horizontal-Band placement with priority-based degradation cascade.
  */
-function resolveHorizontalBandLayout(
+function resolveHorizontalBandWithCascade(
   elements: AdElement[],
   surface: SurfaceProfile,
-  contentX: number,
-  contentY: number,
-  contentWidth: number,
-  contentHeight: number,
   measure: TextMeasurer
 ): ResolvedLayout {
-  const resolved: ResolvedElement[] = [];
-  const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
+  const safeLeft = surface.safeArea?.left ?? 0;
+  const safeTop = surface.safeArea?.top ?? 0;
+  const safeRight = surface.safeArea?.right ?? 0;
+  const safeBottom = surface.safeArea?.bottom ?? 0;
 
-  // Categorize elements by semantic role for horizontal band zones
-  const heroElement = elements.find((e) => e.role === "hero");
-  const actionElement = elements.find((e) => e.role === "action");
-  const brandingElement = elements.find((e) => e.role === "branding");
-  const textElements = elements.filter((e) => e.role === "primary" || e.role === "secondary");
-  const otherElements = elements.filter(
-    (e) => e !== heroElement && e !== actionElement && e !== brandingElement && !textElements.includes(e)
+  const availWidth = surface.width - safeLeft - safeRight;
+  const availHeight = surface.height - safeTop - safeBottom;
+
+  const cascadeStages = [
+    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: false, dropP2: false, shrink: false },
+    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true, dropP2: false, shrink: false },
+    { padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true, shrink: false },
+    { padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrink: true },
+  ];
+
+  for (const stage of cascadeStages) {
+    const layout = tryHorizontalPlacement(elements, surface, stage, measure, availWidth, availHeight, safeLeft, safeTop);
+    if (layout) {
+      return layout;
+    }
+  }
+
+  throw new LayoutError(
+    `Cannot fit required priority 1 elements within horizontal-band surface "${surface.name}" (${surface.width}x${surface.height}).`
   );
+}
 
-  let currentX = contentX;
+function tryHorizontalPlacement(
+  elements: AdElement[],
+  surface: SurfaceProfile,
+  stage: { padding: number; gap: number; dropP3: boolean; dropP2: boolean; shrink: boolean },
+  measure: TextMeasurer,
+  availWidth: number,
+  availHeight: number,
+  safeLeft: number,
+  safeTop: number
+): ResolvedLayout | null {
+  const contentWidth = availWidth - stage.padding * 2;
+  const contentHeight = availHeight - stage.padding * 2;
 
-  // 1. Branding / Hero on the left
+  if (contentWidth <= 0 || contentHeight <= 0) return null;
+
+  const resolved: ResolvedElement[] = [];
+  const activeElements: AdElement[] = [];
+
+  for (const el of elements) {
+    if (el.priority === 3 && stage.dropP3) {
+      resolved.push({
+        id: el.id,
+        x: safeLeft + stage.padding,
+        y: safeTop + stage.padding,
+        width: 0,
+        height: 0,
+        visible: false,
+        degraded: "dropped",
+      });
+    } else if (el.priority === 2 && stage.dropP2) {
+      resolved.push({
+        id: el.id,
+        x: safeLeft + stage.padding,
+        y: safeTop + stage.padding,
+        width: 0,
+        height: 0,
+        visible: false,
+        degraded: "dropped",
+      });
+    } else {
+      activeElements.push(el);
+    }
+  }
+
+  const heroElement = activeElements.find((e) => e.role === "hero");
+  const actionElement = activeElements.find((e) => e.role === "action");
+  const brandingElement = activeElements.find((e) => e.role === "branding");
+  const textElements = activeElements.filter((e) => e.role === "primary" || e.role === "secondary");
+
+  const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
+  let currentX = safeLeft + stage.padding;
+
+  // 1. Branding on far left if active
   if (brandingElement) {
-    const fontSize = calculateFontSize(brandingElement, surface);
-    const width = Math.min(100, Math.floor(contentWidth * 0.12));
-    const height = Math.min(contentHeight, 40);
-    const y = contentY + Math.floor((contentHeight - height) / 2);
+    const floor = hardConstraintFloor(brandingElement, surface);
+    const fontSize = calculateFontSize(brandingElement, surface, stage.shrink);
+    const bw = Math.max(floor.minWidth, Math.min(100, Math.floor(contentWidth * 0.12)));
+    const bh = Math.max(floor.minHeight, Math.min(contentHeight, stage.shrink ? 24 : 36));
+    const by = safeTop + stage.padding + Math.floor((contentHeight - bh) / 2);
 
     resolved.push({
       id: brandingElement.id,
       x: currentX,
-      y,
-      width,
-      height,
+      y: by,
+      width: bw,
+      height: bh,
       fontSize,
       visible: true,
+      degraded: stage.shrink ? "shrunk" : undefined,
     });
-    currentX += width + DEFAULT_GAP;
+    currentX += bw + stage.gap;
   }
 
+  // 2. Hero image
   if (heroElement) {
-    const heroWidth = Math.min(
-      Math.floor(contentHeight * (16 / 9)),
-      Math.floor(contentWidth * 0.25)
+    const floor = hardConstraintFloor(heroElement, surface);
+    const heroH = contentHeight;
+    const heroW = Math.max(
+      floor.minWidth,
+      Math.min(Math.floor(contentHeight * (16 / 9)), Math.floor(contentWidth * 0.25))
     );
-    const heroHeight = contentHeight;
 
     resolved.push({
       id: heroElement.id,
       x: currentX,
-      y: contentY,
-      width: heroWidth,
-      height: heroHeight,
+      y: safeTop + stage.padding,
+      width: heroW,
+      height: heroH,
       visible: true,
+      degraded: stage.shrink ? "shrunk" : undefined,
     });
-    currentX += heroWidth + DEFAULT_GAP;
+    currentX += heroW + stage.gap;
   }
 
-  // 2. Action CTA on the far right
+  // 3. Action button on the far right
   let rightReservedWidth = 0;
   let actionBox: ResolvedElement | null = null;
 
   if (actionElement) {
-    const fontSize = calculateFontSize(actionElement, surface);
-    const actionWidth = Math.max(140, minTap);
-    const actionHeight = Math.max(44, minTap, Math.min(contentHeight, 50));
-    const actionX = contentX + contentWidth - actionWidth;
-    const actionY = contentY + Math.floor((contentHeight - actionHeight) / 2);
+    const floor = hardConstraintFloor(actionElement, surface);
+    const fontSize = calculateFontSize(actionElement, surface, stage.shrink);
+    const aw = Math.max(floor.minWidth, minTap, stage.shrink ? 120 : 150);
+    const ah = Math.max(floor.minHeight, minTap, Math.min(contentHeight, 48));
+    const ax = safeLeft + stage.padding + contentWidth - aw;
+    const ay = safeTop + stage.padding + Math.floor((contentHeight - ah) / 2);
 
     actionBox = {
       id: actionElement.id,
-      x: actionX,
-      y: actionY,
-      width: actionWidth,
-      height: actionHeight,
+      x: ax,
+      y: ay,
+      width: aw,
+      height: ah,
       fontSize,
       visible: true,
+      degraded: stage.shrink ? "shrunk" : undefined,
     };
-    rightReservedWidth = actionWidth + DEFAULT_GAP;
+    rightReservedWidth = aw + stage.gap;
   }
 
-  // 3. Text elements in the middle flexible section
-  const middleWidth = Math.max(0, contentX + contentWidth - rightReservedWidth - currentX);
-  let textY = contentY;
+  // 4. Middle flexible text area
+  const middleWidth = safeLeft + stage.padding + contentWidth - rightReservedWidth - currentX;
+  if (middleWidth < 40 && textElements.length > 0) {
+    return null;
+  }
 
+  let textY = safeTop + stage.padding;
   for (const textEl of textElements) {
-    const fontSize = calculateFontSize(textEl, surface);
-    const roleConfig = ROLE_NATURAL_SIZING[textEl.role];
-    const textDim = measure(textEl.content ?? textEl.id, fontSize ?? 16);
-    const height = Math.max(roleConfig.minHeight, textDim.height + 2);
+    const floor = hardConstraintFloor(textEl, surface);
+    const fontSize = calculateFontSize(textEl, surface, stage.shrink);
+    const dim = measure(textEl.content ?? textEl.id, fontSize ?? 16);
+    const th = Math.max(floor.minHeight, dim.height + 2);
+
+    if (textY + th > safeTop + stage.padding + contentHeight + 0.01) {
+      return null;
+    }
 
     resolved.push({
       id: textEl.id,
       x: currentX,
       y: textY,
       width: middleWidth,
-      height,
+      height: th,
       fontSize,
       visible: true,
+      degraded: stage.shrink ? "shrunk" : undefined,
     });
-    textY += height + 4;
-  }
-
-  for (const otherEl of otherElements) {
-    const fontSize = calculateFontSize(otherEl, surface);
-    resolved.push({
-      id: otherEl.id,
-      x: currentX,
-      y: textY,
-      width: middleWidth,
-      height: 30,
-      fontSize,
-      visible: true,
-    });
-    textY += 34;
+    textY += th + 4;
   }
 
   if (actionBox) {
@@ -346,93 +676,199 @@ function resolveHorizontalBandLayout(
 }
 
 /**
- * Resolves layout for square / 2D grid multi-column arrangement.
+ * Grid / 2D split-pane placement with priority-based degradation cascade.
  */
-function resolveGridLayout(
+function resolveGridWithCascade(
   elements: AdElement[],
   surface: SurfaceProfile,
-  contentX: number,
-  contentY: number,
-  contentWidth: number,
-  contentHeight: number,
   measure: TextMeasurer
 ): ResolvedLayout {
+  const safeLeft = surface.safeArea?.left ?? 0;
+  const safeTop = surface.safeArea?.top ?? 0;
+  const safeRight = surface.safeArea?.right ?? 0;
+  const safeBottom = surface.safeArea?.bottom ?? 0;
+
+  const availWidth = surface.width - safeLeft - safeRight;
+  const availHeight = surface.height - safeTop - safeBottom;
+
+  const cascadeStages = [
+    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: false, dropP2: false, shrink: false },
+    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true, dropP2: false, shrink: false },
+    { padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true, shrink: false },
+    { padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrink: true },
+  ];
+
+  for (const stage of cascadeStages) {
+    const layout = tryGridPlacement(elements, surface, stage, measure, availWidth, availHeight, safeLeft, safeTop);
+    if (layout) {
+      return layout;
+    }
+  }
+
+  throw new LayoutError(
+    `Cannot fit required priority 1 elements within grid surface "${surface.name}" (${surface.width}x${surface.height}).`
+  );
+}
+
+function tryGridPlacement(
+  elements: AdElement[],
+  surface: SurfaceProfile,
+  stage: { padding: number; gap: number; dropP3: boolean; dropP2: boolean; shrink: boolean },
+  measure: TextMeasurer,
+  availWidth: number,
+  availHeight: number,
+  safeLeft: number,
+  safeTop: number
+): ResolvedLayout | null {
+  const contentWidth = availWidth - stage.padding * 2;
+  const contentHeight = availHeight - stage.padding * 2;
+
+  if (contentWidth <= 0 || contentHeight <= 0) return null;
+
   const resolved: ResolvedElement[] = [];
+  const activeElements: AdElement[] = [];
+
+  for (const el of elements) {
+    if (el.priority === 3 && stage.dropP3) {
+      resolved.push({
+        id: el.id,
+        x: safeLeft + stage.padding,
+        y: safeTop + stage.padding,
+        width: 0,
+        height: 0,
+        visible: false,
+        degraded: "dropped",
+      });
+    } else if (el.priority === 2 && stage.dropP2) {
+      resolved.push({
+        id: el.id,
+        x: safeLeft + stage.padding,
+        y: safeTop + stage.padding,
+        width: 0,
+        height: 0,
+        visible: false,
+        degraded: "dropped",
+      });
+    } else {
+      activeElements.push(el);
+    }
+  }
+
+  const heroElement = activeElements.find((e) => e.role === "hero");
+  const nonHeroElements = activeElements.filter((e) => e !== heroElement);
   const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
 
-  const heroElement = elements.find((e) => e.role === "hero");
-  const nonHeroElements = elements.filter((e) => e !== heroElement);
-
   if (heroElement) {
-    // 2-Pane split: Left Hero pane, Right Content column
-    const heroWidth = Math.floor(contentWidth * 0.48);
+    const heroFloor = hardConstraintFloor(heroElement, surface);
+    const heroShare = stage.shrink ? 0.4 : 0.48;
+    const heroWidth = Math.max(heroFloor.minWidth, Math.floor(contentWidth * heroShare));
     const heroHeight = contentHeight;
 
+    const colX = safeLeft + stage.padding + heroWidth + stage.gap;
+    const colWidth = contentWidth - heroWidth - stage.gap;
+
+    if (colWidth < 50) return null;
+
+    const elementBoxes: { element: AdElement; width: number; height: number; fontSize?: number; degraded?: DegradeKind }[] = [];
+    let requiredColHeight = 0;
+
+    for (const el of nonHeroElements) {
+      const floor = hardConstraintFloor(el, surface);
+      const fontSize = calculateFontSize(el, surface, stage.shrink);
+      let w = colWidth;
+      let h = roleConfigHeight(el, floor, fontSize, minTap, stage.shrink, measure);
+      let degraded: DegradeKind | undefined = stage.shrink ? "shrunk" : undefined;
+
+      if (el.role === "branding") {
+        w = Math.min(colWidth * 0.6, 100);
+      } else if (el.type === "button" || el.role === "action") {
+        w = Math.min(colWidth, Math.max(floor.minWidth, 160));
+      }
+
+      elementBoxes.push({ element: el, width: w, height: h, fontSize, degraded });
+      requiredColHeight += h;
+    }
+
+    requiredColHeight += Math.max(0, elementBoxes.length - 1) * stage.gap;
+
+    if (requiredColHeight > contentHeight) {
+      return null;
+    }
+
+    // Place hero
     resolved.push({
       id: heroElement.id,
-      x: contentX,
-      y: contentY,
+      x: safeLeft + stage.padding,
+      y: safeTop + stage.padding,
       width: heroWidth,
       height: heroHeight,
       visible: true,
+      degraded: stage.shrink ? "shrunk" : undefined,
     });
 
-    const colX = contentX + heroWidth + DEFAULT_GAP;
-    const colWidth = Math.max(0, contentWidth - heroWidth - DEFAULT_GAP);
-    let colY = contentY;
+    // Place non-hero column
+    let colY = safeTop + stage.padding;
+    for (const box of elementBoxes) {
+      resolved.push({
+        id: box.element.id,
+        x: colX,
+        y: colY,
+        width: box.width,
+        height: box.height,
+        fontSize: box.fontSize,
+        visible: true,
+        degraded: box.degraded,
+      });
+      colY += box.height + stage.gap;
+    }
+  } else {
+    // Single column stack without hero
+    let currentY = safeTop + stage.padding;
+    for (const el of nonHeroElements) {
+      const floor = hardConstraintFloor(el, surface);
+      const fontSize = calculateFontSize(el, surface, stage.shrink);
+      const h = roleConfigHeight(el, floor, fontSize, minTap, stage.shrink, measure);
+      const w = contentWidth;
 
-    for (const element of nonHeroElements) {
-      const roleConfig = ROLE_NATURAL_SIZING[element.role];
-      const fontSize = calculateFontSize(element, surface);
-
-      let width = colWidth;
-      let height = roleConfig.minHeight;
-
-      if (element.type === "text") {
-        const text = element.content ?? element.id;
-        const textDim = measure(text, fontSize ?? 16);
-        height = Math.max(roleConfig.minHeight, textDim.height + 4);
-        width = colWidth;
-      } else if (element.type === "button" || element.role === "action") {
-        height = Math.max(roleConfig.minHeight, minTap, 44);
-        width = Math.min(colWidth, Math.max(roleConfig.minWidth, 160));
-      } else if (element.role === "branding") {
-        height = Math.max(roleConfig.minHeight, 28);
-        width = Math.min(colWidth * 0.5, 100);
+      if (currentY + h > safeTop + stage.padding + contentHeight + 0.01) {
+        return null;
       }
 
       resolved.push({
-        id: element.id,
-        x: colX,
-        y: colY,
-        width,
-        height,
-        fontSize,
-        visible: true,
-      });
-
-      colY += height + DEFAULT_GAP;
-    }
-  } else {
-    // Single column stack when no hero element is present
-    let currentY = contentY;
-    for (const element of elements) {
-      const roleConfig = ROLE_NATURAL_SIZING[element.role];
-      const fontSize = calculateFontSize(element, surface);
-      const height = roleConfig.minHeight;
-
-      resolved.push({
-        id: element.id,
-        x: contentX,
+        id: el.id,
+        x: safeLeft + stage.padding,
         y: currentY,
-        width: contentWidth,
-        height,
+        width: w,
+        height: h,
         fontSize,
         visible: true,
+        degraded: stage.shrink ? "shrunk" : undefined,
       });
-      currentY += height + DEFAULT_GAP;
+      currentY += h + stage.gap;
     }
   }
 
   return resolved;
+}
+
+function roleConfigHeight(
+  el: AdElement,
+  floor: ElementConstraintFloor,
+  fontSize: number | undefined,
+  minTap: number,
+  shrink: boolean,
+  measure: TextMeasurer
+): number {
+  const roleConfig = ROLE_NATURAL_SIZING[el.role];
+  if (el.type === "text") {
+    const dim = measure(el.content ?? el.id, fontSize ?? 16);
+    return Math.max(floor.minHeight, shrink ? 0 : roleConfig.minHeight, dim.height + 4);
+  }
+  if (el.type === "button" || el.role === "action") {
+    return Math.max(floor.minHeight, minTap, shrink ? 40 : roleConfig.minHeight);
+  }
+  if (el.role === "branding") {
+    return Math.max(floor.minHeight, shrink ? 20 : roleConfig.minHeight);
+  }
+  return Math.max(floor.minHeight, shrink ? 0 : roleConfig.minHeight);
 }
