@@ -271,55 +271,65 @@ export function App() {
   const aspectRatio = activeSurface ? (activeSurface.width / activeSurface.height).toFixed(2) : "0";
 
   // Fit scale calculation for viewport preview
-  const maxPreviewW = 780;
-  const maxPreviewH = 460;
+  const maxPreviewW = 820;
+  const maxPreviewH = 480;
   const scale = activeSurface
     ? Math.min(maxPreviewW / activeSurface.width, maxPreviewH / activeSurface.height, 1)
     : 1;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30">
-      {/* Header Bar */}
-      <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 font-black text-white text-base">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Top Header */}
+      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-md">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 font-black text-white text-lg ring-1 ring-white/20">
             ✦
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              Adaptive Layout Engine
-              <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-lg font-bold tracking-tight text-white">
+                Adaptive Layout Engine
+              </h1>
+              <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
                 v1.0
               </span>
-            </h1>
+            </div>
             <p className="text-xs text-slate-400">
-              Single declarative ad spec adapted across multi-surface profiles
+              Multi-surface constraint resolution system without per-surface branching
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-300 cursor-pointer bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-md border border-slate-700/60 transition-colors select-none">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-300 cursor-pointer bg-slate-800/80 hover:bg-slate-800 px-3.5 py-2 rounded-lg border border-slate-700 transition-colors select-none shadow-sm">
             <input
               type="checkbox"
               checked={showSafeAreas}
               onChange={(e) => setShowSafeAreas(e.target.checked)}
-              className="accent-emerald-500 rounded"
+              className="accent-emerald-500 rounded w-4 h-4 cursor-pointer"
             />
-            <span>Show Safe Areas</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+              Show Safe Areas
+            </span>
           </label>
         </div>
       </header>
 
-      {/* Main Content Dashboard */}
+      {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Surface Picker & Custom Controller (4 cols) */}
+        {/* Left Column: Surface Picker & Controllers (4 cols) */}
         <section className="lg:col-span-4 flex flex-col gap-5">
           {/* Surface Presets */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 shadow-xl">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-              <span>Target Surfaces</span>
-            </h2>
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-xl">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Target Surfaces
+              </h2>
+              <span className="text-[11px] font-mono text-slate-500 bg-slate-800 px-2 py-0.5 rounded">
+                {PRESET_SURFACES.length} Surfaces
+              </span>
+            </div>
 
             <div className="space-y-2">
               {PRESET_SURFACES.map((preset) => {
@@ -329,25 +339,27 @@ export function App() {
                     key={preset.id}
                     type="button"
                     onClick={() => setSelectedPresetId(preset.id)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all duration-150 flex items-start gap-3 cursor-pointer select-none ${
+                    className={`w-full text-left p-3 rounded-xl border transition-all duration-150 flex items-start gap-3.5 cursor-pointer select-none ${
                       isSelected
-                        ? "bg-indigo-600/15 border-indigo-500/60 text-white shadow-md shadow-indigo-500/10"
-                        : "bg-slate-800/40 border-slate-800 hover:bg-slate-800/80 text-slate-300 hover:border-slate-700"
+                        ? "bg-gradient-to-r from-indigo-950/80 to-slate-900 border-indigo-500/80 text-white shadow-lg shadow-indigo-950/50 ring-1 ring-indigo-500/40"
+                        : "bg-slate-950/50 border-slate-800/80 hover:bg-slate-800/60 text-slate-300 hover:border-slate-700"
                     }`}
                   >
-                    <span className="text-xl p-1 rounded bg-slate-800/60 border border-slate-700/40">
+                    <span className="text-2xl p-2 rounded-lg bg-slate-900 border border-slate-800 shrink-0">
                       {preset.icon}
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold truncate">{preset.label}</span>
+                        <span className="text-sm font-bold truncate text-slate-100">
+                          {preset.label}
+                        </span>
                         {preset.id === "kiosk-tight" && (
-                          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
                             Degrade
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">{preset.desc}</p>
+                      <p className="text-xs text-slate-400 mt-1 truncate">{preset.desc}</p>
                     </div>
                   </button>
                 );
@@ -355,53 +367,55 @@ export function App() {
             </div>
           </div>
 
-          {/* Custom Surface Editor (Visible when Custom is selected) */}
+          {/* Custom Surface Editor */}
           {selectedPresetId === "custom" && (
-            <div className="bg-slate-900/80 border border-indigo-500/30 rounded-xl p-4 shadow-xl space-y-4 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="bg-slate-900/90 border border-indigo-500/40 rounded-2xl p-4 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
                   <span>Custom Surface Parameters</span>
                 </h3>
-                <span className="text-[10px] text-slate-400 font-mono">Live Resolver</span>
+                <span className="text-[10px] text-indigo-300 font-mono bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                  Live Resolver
+                </span>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-slate-400 block">Surface Name</label>
+                <label className="text-xs font-medium text-slate-300 block">Surface Name</label>
                 <input
                   type="text"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value || "Custom Surface")}
-                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1">Width (px)</label>
+                  <label className="text-xs font-medium text-slate-300 block mb-1">Width (px)</label>
                   <input
                     type="number"
                     min="100"
                     max="4000"
                     value={customWidth}
                     onChange={(e) => setCustomWidth(Math.max(1, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1">Height (px)</label>
+                  <label className="text-xs font-medium text-slate-300 block mb-1">Height (px)</label>
                   <input
                     type="number"
                     min="80"
                     max="4000"
                     value={customHeight}
                     onChange={(e) => setCustomHeight(Math.max(1, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">
+                <label className="text-xs font-medium text-slate-300 block mb-1">
                   Safe Area Insets [T, R, B, L] (px)
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -410,45 +424,45 @@ export function App() {
                     placeholder="Top"
                     value={customSafeTop}
                     onChange={(e) => setCustomSafeTop(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-center text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-center text-white"
                   />
                   <input
                     type="number"
                     placeholder="Right"
                     value={customSafeRight}
                     onChange={(e) => setCustomSafeRight(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-center text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-center text-white"
                   />
                   <input
                     type="number"
                     placeholder="Bottom"
                     value={customSafeBottom}
                     onChange={(e) => setCustomSafeBottom(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-center text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-center text-white"
                   />
                   <input
                     type="number"
                     placeholder="Left"
                     value={customSafeLeft}
                     onChange={(e) => setCustomSafeLeft(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-center text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-center text-white"
                   />
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2 border-t border-slate-800">
+              <div className="space-y-3 pt-2.5 border-t border-slate-800">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs text-slate-300 flex items-center gap-2 cursor-pointer">
+                  <label className="text-xs text-slate-300 flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={customTouchOnly}
                       onChange={(e) => setCustomTouchOnly(e.target.checked)}
-                      className="accent-indigo-500 rounded"
+                      className="accent-indigo-500 rounded w-4 h-4"
                     />
-                    <span>Touch Only Device</span>
+                    <span>Touch Device</span>
                   </label>
                   {customTouchOnly && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <span className="text-[11px] text-slate-400">Min Tap:</span>
                       <input
                         type="number"
@@ -456,24 +470,22 @@ export function App() {
                         max="80"
                         value={customMinTap}
                         onChange={(e) => setCustomMinTap(parseInt(e.target.value) || 44)}
-                        className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-center text-white"
+                        className="w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-center text-white"
                       />
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <label className="text-xs text-slate-300 flex items-center gap-2">
-                    <span>Viewing Distance:</span>
-                  </label>
+                  <label className="text-xs text-slate-300">Viewing Distance:</label>
                   <div className="flex items-center gap-2">
                     <select
                       value={customViewingDistance}
                       onChange={(e) => setCustomViewingDistance(e.target.value as "near" | "far")}
-                      className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                      className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
                     >
                       <option value="near">Near (Mobile/Kiosk)</option>
-                      <option value="far">Far (Billboard/Broadcast)</option>
+                      <option value="far">Far (Billboard/TV)</option>
                     </select>
                     {customViewingDistance === "far" && (
                       <input
@@ -482,7 +494,7 @@ export function App() {
                         max="64"
                         value={customMinTextSize}
                         onChange={(e) => setCustomMinTextSize(parseInt(e.target.value) || 24)}
-                        className="w-12 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-center text-white"
+                        className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-center text-white"
                         title="Min Text Size (px)"
                       />
                     )}
@@ -493,56 +505,60 @@ export function App() {
           )}
 
           {/* Ad Spec Manifest */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 shadow-xl">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-xl">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 px-1">
               Active Declarative Ad Spec
             </h3>
             <div className="space-y-1.5 font-mono text-xs">
               {demoAdSpec.elements.map((el) => (
                 <div
                   key={el.id}
-                  className="flex items-center justify-between p-1.5 rounded bg-slate-950/60 border border-slate-800/60 text-slate-300"
+                  className="flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-800/80 text-slate-300"
                 >
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                  <div className="flex items-center gap-2.5 truncate">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                       P{el.priority}
                     </span>
-                    <span className="truncate">{el.id}</span>
+                    <span className="truncate text-slate-200 font-semibold">{el.id}</span>
                   </div>
-                  <span className="text-[11px] text-indigo-400/90 lowercase">{el.role}</span>
+                  <span className="text-[11px] text-indigo-400 lowercase font-medium bg-indigo-500/10 px-2 py-0.5 rounded">
+                    {el.role}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Right Column: Live Viewport Canvas & Status Inspector (8 cols) */}
+        {/* Right Column: Live Viewport Canvas & Output Inspector (8 cols) */}
         <section className="lg:col-span-8 flex flex-col gap-5">
           {/* Surface Meta Badge Bar */}
           {activeSurface && (
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3.5 text-xs shadow-lg">
               <div className="flex items-center gap-3">
-                <span className="font-semibold text-white text-sm">{activeSurface.name}</span>
-                <span className="font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                <span className="font-bold text-white text-sm">{activeSurface.name}</span>
+                <span className="font-mono text-slate-300 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-800 text-xs font-semibold">
                   {activeSurface.width} × {activeSurface.height}px
                 </span>
-                <span className="font-mono text-slate-400">Ratio: {aspectRatio}:1</span>
+                <span className="font-mono text-slate-400 font-medium">
+                  Aspect: {aspectRatio}:1
+                </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-slate-400">Axis:</span>
-                <span className="font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider text-[11px]">
+                <span className="font-mono font-bold px-2.5 py-1 rounded-md bg-blue-500/15 text-blue-300 border border-blue-500/30 uppercase tracking-wider text-xs">
                   {axis}
                 </span>
 
                 {activeSurface.touchOnly && (
-                  <span className="font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px]">
+                  <span className="font-mono px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
                     Touch (≥{activeSurface.minTapTarget ?? 44}px)
                   </span>
                 )}
 
                 {activeSurface.viewingDistance === "far" && (
-                  <span className="font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[11px]">
+                  <span className="font-mono px-2.5 py-1 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/30 text-xs font-semibold">
                     Far View (≥{activeSurface.minTextSize ?? 24}px)
                   </span>
                 )}
@@ -551,19 +567,19 @@ export function App() {
           )}
 
           {/* Canvas Render Screen Box */}
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-xl p-6 shadow-2xl flex flex-col items-center justify-center min-h-[480px] relative overflow-hidden">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col items-center justify-center min-h-[500px] relative overflow-hidden ring-1 ring-white/5">
             {error ? (
-              <div className="p-6 max-w-md bg-rose-950/40 border border-rose-500/40 rounded-xl text-center">
-                <div className="text-rose-400 text-2xl mb-2">⚠️</div>
-                <h3 className="text-sm font-bold text-rose-300 mb-1">Layout Resolution Error</h3>
-                <p className="text-xs text-rose-400/90 font-mono break-words">{error}</p>
-                <p className="text-[11px] text-slate-400 mt-3">
-                  The constraint engine refused to silently overlap or clip elements.
+              <div className="p-8 max-w-lg bg-rose-950/40 border border-rose-500/50 rounded-2xl text-center shadow-xl">
+                <div className="text-rose-400 text-3xl mb-3">⚠️</div>
+                <h3 className="text-base font-bold text-rose-300 mb-2">Layout Resolution Refused</h3>
+                <p className="text-xs text-rose-300/90 font-mono break-words leading-relaxed">{error}</p>
+                <p className="text-xs text-slate-400 mt-4 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                  The constraint resolver guarantees zero silent overlaps or clipping violations.
                 </p>
               </div>
             ) : layout && activeSurface ? (
               <div
-                className="relative shadow-2xl border border-slate-700/60 rounded-lg overflow-hidden transition-all duration-300"
+                className="relative shadow-2xl border border-slate-700/80 rounded-xl overflow-hidden transition-all duration-300 ring-2 ring-indigo-500/20"
                 style={{
                   width: `${activeSurface.width * scale}px`,
                   height: `${activeSurface.height * scale}px`,
@@ -582,23 +598,25 @@ export function App() {
             ) : null}
 
             {activeSurface && scale < 1 && !error && (
-              <div className="absolute bottom-2 right-3 text-[10px] font-mono text-slate-500">
-                Scaled view: {Math.round(scale * 100)}% (actual: {activeSurface.width}×{activeSurface.height}px)
+              <div className="absolute bottom-3 right-4 text-[11px] font-mono text-slate-400 bg-slate-950/80 px-2 py-1 rounded border border-slate-800">
+                Preview Zoom: {Math.round(scale * 100)}% (Actual: {activeSurface.width}×{activeSurface.height}px)
               </div>
             )}
           </div>
 
           {/* Degradation & Coordinate Inspector Table */}
           {layout && (
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 shadow-xl">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
-                <span>Layout Output Inspector</span>
-                <span className="text-[11px] font-mono font-normal text-slate-400">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+              <div className="flex items-center justify-between mb-3.5 px-1">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Layout Output Inspector
+                </h3>
+                <span className="text-xs font-mono font-medium text-slate-400 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-800">
                   {layout.filter((e) => e.visible).length} visible • {layout.filter((e) => !e.visible).length} dropped
                 </span>
-              </h3>
+              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {layout.map((el) => {
                   const specEl = demoAdSpec.elements.find((e) => e.id === el.id);
                   const isDropped = !el.visible || el.degraded === "dropped";
@@ -608,41 +626,41 @@ export function App() {
                   return (
                     <div
                       key={el.id}
-                      className={`p-2.5 rounded-lg border text-xs flex flex-col justify-between transition-colors ${
+                      className={`p-3 rounded-xl border text-xs flex flex-col justify-between transition-all ${
                         isDropped
-                          ? "bg-slate-950/40 border-slate-800/60 opacity-60"
-                          : "bg-slate-950/80 border-slate-800 text-slate-200"
+                          ? "bg-slate-950/40 border-slate-800/50 opacity-60"
+                          : "bg-slate-950 border-slate-800 text-slate-200 shadow-sm"
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-semibold text-slate-200 truncate">{el.id}</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-slate-100 truncate text-sm">{el.id}</span>
                         {isDropped ? (
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
                             DROPPED
                           </span>
                         ) : isShrunk ? (
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
                             SHRUNK
                           </span>
                         ) : isRepositioned ? (
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40">
                             COMPACT
                           </span>
                         ) : (
-                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                             NORMAL
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between font-mono text-[11px] text-slate-400">
+                      <div className="flex items-center justify-between font-mono text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
                         <span>P{specEl?.priority ?? "?"} • {specEl?.role}</span>
                         {el.visible ? (
-                          <span className="text-slate-300">
+                          <span className="text-indigo-300 font-semibold">
                             {el.width}×{el.height} @ ({el.x},{el.y})
                           </span>
                         ) : (
-                          <span className="text-slate-500">hidden</span>
+                          <span className="text-slate-500 italic">omitted</span>
                         )}
                       </div>
                     </div>
