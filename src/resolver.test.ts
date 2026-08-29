@@ -8,16 +8,93 @@ import {
   hardConstraintFloor,
   assertNoOverlapOrClip,
   LayoutError,
+  mockTextMeasurer,
 } from "./resolver.ts";
-import { mockTextMeasurer } from "./measure.ts";
-import { demoAdSpec } from "./demo-spec.ts";
-import {
-  mobilePortrait,
-  mobileLandscape,
-  broadcastLowerThird,
-  squareKiosk,
-  squareKioskTight,
-} from "./demo-surfaces.ts";
+
+const testAdSpec: AdSpec = defineAd({
+  elements: [
+    {
+      id: "hero-image",
+      type: "image",
+      role: "hero",
+      priority: 2,
+      content: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80",
+    },
+    {
+      id: "headline",
+      type: "text",
+      role: "primary",
+      priority: 1,
+      content: "Aura Noise-Cancelling Headphones",
+    },
+    {
+      id: "price",
+      type: "text",
+      role: "secondary",
+      priority: 2,
+      content: "$299 — Premium Sound",
+    },
+    {
+      id: "cta",
+      type: "button",
+      role: "action",
+      priority: 1,
+      content: "Buy Now",
+    },
+    {
+      id: "logo",
+      type: "image",
+      role: "branding",
+      priority: 3,
+      content: "AURA AUDIO",
+    },
+  ],
+});
+
+const mobilePortrait = defineSurface({
+  name: "Mobile Portrait",
+  width: 390,
+  height: 844,
+  safeArea: { top: 47, right: 0, bottom: 34, left: 0 },
+  touchOnly: true,
+  minTapTarget: 48,
+});
+
+const mobileLandscape = defineSurface({
+  name: "Mobile Landscape",
+  width: 844,
+  height: 390,
+  safeArea: { top: 0, right: 47, bottom: 21, left: 47 },
+  touchOnly: true,
+  minTapTarget: 48,
+});
+
+const broadcastLowerThird = defineSurface({
+  name: "Broadcast Lower-Third",
+  width: 1920,
+  height: 360,
+  safeArea: { top: 24, right: 64, bottom: 24, left: 64 },
+  viewingDistance: "far",
+  minTextSize: 24,
+});
+
+const squareKiosk = defineSurface({
+  name: "Square Kiosk",
+  width: 800,
+  height: 800,
+  safeArea: { top: 24, right: 24, bottom: 24, left: 24 },
+  touchOnly: true,
+  minTapTarget: 48,
+});
+
+const squareKioskTight = defineSurface({
+  name: "Square Kiosk (Tight)",
+  width: 360,
+  height: 240,
+  safeArea: { top: 12, right: 12, bottom: 12, left: 12 },
+  touchOnly: true,
+  minTapTarget: 44,
+});
 
 describe("Phase 1: Type System & Runtime Validators", () => {
   describe("defineAd", () => {
@@ -84,7 +161,7 @@ describe("Phase 1: Type System & Runtime Validators", () => {
     });
 
     it("accepts valid touchOnly surface with minTapTarget", () => {
-      const mobileSurface = defineSurface({
+      const surface = defineSurface({
         name: "mobile-portrait",
         width: 390,
         height: 844,
@@ -92,8 +169,8 @@ describe("Phase 1: Type System & Runtime Validators", () => {
         minTapTarget: 48,
       });
 
-      expect(mobileSurface.touchOnly).toBe(true);
-      expect(mobileSurface.minTapTarget).toBe(48);
+      expect(surface.touchOnly).toBe(true);
+      expect(surface.minTapTarget).toBe(48);
     });
 
     it("accepts valid viewingDistance far surface with minTextSize", () => {
@@ -226,7 +303,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
     it.each(requiredSurfaces)(
       "resolves $label correctly and satisfies assertNoOverlapOrClip",
       ({ surface }) => {
-        const layout = resolveLayout(demoAdSpec, surface, mockTextMeasurer);
+        const layout = resolveLayout(testAdSpec, surface, mockTextMeasurer);
 
         expect(layout).toBeDefined();
         expect(layout.length).toBeGreaterThan(0);
@@ -252,7 +329,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
 
   describe("Degradation Cascade", () => {
     it("drops lowest priority element (branding) on tight kiosk surface while keeping headline and cta intact", () => {
-      const layout = resolveLayout(demoAdSpec, squareKioskTight, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, squareKioskTight, mockTextMeasurer);
 
       const headline = layout.find((e) => e.id === "headline")!;
       const cta = layout.find((e) => e.id === "cta")!;
@@ -279,7 +356,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         minTapTarget: 44,
       });
 
-      const layout = resolveLayout(demoAdSpec, tightVerticalSurface, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, tightVerticalSurface, mockTextMeasurer);
 
       const headline = layout.find((e) => e.id === "headline")!;
       const cta = layout.find((e) => e.id === "cta")!;
@@ -304,7 +381,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         minTapTarget: 52,
       });
 
-      const layout = resolveLayout(demoAdSpec, customTouchSurface, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, customTouchSurface, mockTextMeasurer);
       const cta = layout.find((e) => e.id === "cta")!;
 
       expect(cta.visible).toBe(true);
@@ -321,7 +398,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         minTextSize: 28,
       });
 
-      const layout = resolveLayout(demoAdSpec, customFarSurface, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, customFarSurface, mockTextMeasurer);
       const headline = layout.find((e) => e.id === "headline")!;
 
       expect(headline.visible).toBe(true);
@@ -329,7 +406,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
     });
 
     it("hardConstraintFloor returns strictly positive minimums for all elements", () => {
-      for (const el of demoAdSpec.elements) {
+      for (const el of testAdSpec.elements) {
         const floor = hardConstraintFloor(el, mobilePortrait);
         expect(floor.minWidth).toBeGreaterThan(0);
         expect(floor.minHeight).toBeGreaterThan(0);
@@ -345,7 +422,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         height: 20,
       });
 
-      expect(() => resolveLayout(demoAdSpec, impossibleSurface, mockTextMeasurer)).toThrow(
+      expect(() => resolveLayout(testAdSpec, impossibleSurface, mockTextMeasurer)).toThrow(
         LayoutError
       );
     });
@@ -358,7 +435,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         safeArea: { top: 95, bottom: 95, left: 95, right: 95 },
       });
 
-      expect(() => resolveLayout(demoAdSpec, blockedSurface, mockTextMeasurer)).toThrow(
+      expect(() => resolveLayout(testAdSpec, blockedSurface, mockTextMeasurer)).toThrow(
         LayoutError
       );
     });
@@ -374,7 +451,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         minTextSize: 20,
       });
 
-      const layout = resolveLayout(demoAdSpec, unseenRibbon, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, unseenRibbon, mockTextMeasurer);
       expect(() => assertNoOverlapOrClip(layout, unseenRibbon)).not.toThrow();
     });
 
@@ -387,7 +464,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         minTapTarget: 44,
       });
 
-      const layout = resolveLayout(demoAdSpec, unseenElevatorDisplay, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, unseenElevatorDisplay, mockTextMeasurer);
       expect(() => assertNoOverlapOrClip(layout, unseenElevatorDisplay)).not.toThrow();
     });
 
@@ -400,7 +477,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
         minTapTarget: 40,
       });
 
-      const layout = resolveLayout(demoAdSpec, unseenSmartDisplay, mockTextMeasurer);
+      const layout = resolveLayout(testAdSpec, unseenSmartDisplay, mockTextMeasurer);
       expect(() => assertNoOverlapOrClip(layout, unseenSmartDisplay)).not.toThrow();
     });
   });
@@ -419,7 +496,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
 
     it("throws LayoutError when an element clips outside surface bounds", () => {
       const clippingLayout = [
-        { id: "el1", x: 750, y: 10, width: 100, height: 100, visible: true }, // 750 + 100 = 850 > 800
+        { id: "el1", x: 750, y: 10, width: 100, height: 100, visible: true },
       ];
 
       expect(() => assertNoOverlapOrClip(clippingLayout, squareKiosk)).toThrow(

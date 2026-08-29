@@ -10,7 +10,7 @@ import {
 import { renderToDOM } from "./render-dom.ts";
 
 // Canonical Demo Ad Spec
-export const demoAdSpec: AdSpec = defineAd({
+const demoAdSpec: AdSpec = defineAd({
   elements: [
     {
       id: "hero-image",
@@ -51,7 +51,7 @@ export const demoAdSpec: AdSpec = defineAd({
 });
 
 // Canonical Demo Surface Profiles
-export const mobilePortrait = defineSurface({
+const mobilePortrait = defineSurface({
   name: "Mobile Portrait",
   width: 390,
   height: 844,
@@ -60,7 +60,7 @@ export const mobilePortrait = defineSurface({
   minTapTarget: 48,
 });
 
-export const mobileLandscape = defineSurface({
+const mobileLandscape = defineSurface({
   name: "Mobile Landscape",
   width: 844,
   height: 390,
@@ -69,7 +69,7 @@ export const mobileLandscape = defineSurface({
   minTapTarget: 48,
 });
 
-export const broadcastLowerThird = defineSurface({
+const broadcastLowerThird = defineSurface({
   name: "Broadcast Lower-Third",
   width: 1920,
   height: 360,
@@ -78,7 +78,7 @@ export const broadcastLowerThird = defineSurface({
   minTextSize: 24,
 });
 
-export const squareKiosk = defineSurface({
+const squareKiosk = defineSurface({
   name: "Square Kiosk",
   width: 800,
   height: 800,
@@ -87,7 +87,7 @@ export const squareKiosk = defineSurface({
   minTapTarget: 48,
 });
 
-export const squareKioskTight = defineSurface({
+const squareKioskTight = defineSurface({
   name: "Square Kiosk (Tight)",
   width: 360,
   height: 240,
