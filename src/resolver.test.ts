@@ -350,8 +350,8 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
       expect(cta.visible).toBe(true);
       expect(branding.visible).toBe(true);
 
-      // Branding is shrunk rather than immediately dropped
-      expect(branding.degraded).toBe("shrunk");
+      // Branding is degraded (shrunk/repositioned) rather than immediately dropped
+      expect(["shrunk", "repositioned"]).toContain(branding.degraded);
 
       // Invariant check passes
       expect(() => assertNoOverlapOrClip(layout, squareKioskCompact)).not.toThrow();

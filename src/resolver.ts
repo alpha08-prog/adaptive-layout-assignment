@@ -547,7 +547,7 @@ function tryVerticalPlacement(
     const fontSize = calculateFontSize(el, surface, isShrunk);
 
     let w = contentWidth;
-    let h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+    let h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure, contentWidth);
 
     if (el.role === "hero") {
       const share = isShrunk ? 0.28 : (roleConfig?.heightShare ?? 0.45);
@@ -795,8 +795,7 @@ function tryHorizontalPlacement(
     const degraded = getElementDegradation(textEl, stage);
     const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
     const fontSize = calculateFontSize(textEl, surface, isShrunk);
-    const dim = measure(textEl.content ?? textEl.id, fontSize ?? 16);
-    const th = Math.max(floor.minHeight, dim.height + 2);
+    const th = roleConfigHeight(textEl, floor, fontSize, minTap, isShrunk, measure, middleWidth);
 
     if (textY + th > safeTop + stage.padding + contentHeight + 0.01) {
       return null;
@@ -928,7 +927,7 @@ function tryGridPlacement(
       const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
       const fontSize = calculateFontSize(el, surface, isShrunk);
       let w = colWidth;
-      let h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+      let h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure, colWidth);
 
       if (el.role === "branding") {
         w = isShrunk ? Math.min(colWidth * 0.5, 80) : Math.min(colWidth * 0.6, 100);
@@ -1004,7 +1003,7 @@ function tryGridPlacement(
         const degraded = getElementDegradation(el, stage);
         const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
         const fontSize = calculateFontSize(el, surface, isShrunk);
-        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure, colW);
 
         if (leftY + h > safeTop + stage.padding + contentHeight + 0.01) return null;
 
@@ -1027,7 +1026,7 @@ function tryGridPlacement(
         const degraded = getElementDegradation(el, stage);
         const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
         const fontSize = calculateFontSize(el, surface, isShrunk);
-        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure, colW);
 
         if (rightY + h > safeTop + stage.padding + contentHeight + 0.01) return null;
 
@@ -1051,7 +1050,7 @@ function tryGridPlacement(
         const degraded = getElementDegradation(el, stage);
         const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
         const fontSize = calculateFontSize(el, surface, isShrunk);
-        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure, contentWidth);
         const w = contentWidth;
 
         if (currentY + h > safeTop + stage.padding + contentHeight + 0.01) {
@@ -1082,12 +1081,18 @@ function roleConfigHeight(
   fontSize: number | undefined,
   minTap: number,
   shrink: boolean,
-  measure: TextMeasurer
+  measure: TextMeasurer,
+  availableWidth?: number
 ): number {
   const roleConfig = ROLE_NATURAL_SIZING[el.role];
   if (el.type === "text") {
     const dim = measure(el.content ?? el.id, fontSize ?? 16);
-    return Math.max(floor.minHeight, shrink ? 0 : (roleConfig?.minHeight ?? 24), dim.height + 4);
+    let lines = 1;
+    if (el.role === "primary" && availableWidth && availableWidth > 0 && dim.width > availableWidth) {
+      lines = Math.min(2, Math.max(1, Math.ceil(dim.width / availableWidth)));
+    }
+    const textH = lines * dim.height + 4;
+    return Math.max(floor.minHeight, shrink ? 0 : (roleConfig?.minHeight ?? 24), textH);
   }
   if (el.type === "button" || el.role === "action") {
     return Math.max(floor.minHeight, minTap, shrink ? 40 : (roleConfig?.minHeight ?? 44));

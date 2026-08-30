@@ -137,9 +137,9 @@ function createDOMElementNode(
   } else if (role === "primary") {
     el = document.createElement("div");
     el.className =
-      "font-extrabold text-slate-50 flex items-center tracking-tight overflow-hidden text-ellipsis leading-tight drop-shadow-sm";
+      "font-extrabold text-slate-50 flex items-center tracking-tight overflow-hidden text-ellipsis drop-shadow-sm";
     const span = document.createElement("span");
-    span.className = "line-clamp-2";
+    span.className = "line-clamp-2 leading-tight";
     span.textContent = content;
     el.appendChild(span);
   } else if (role === "secondary") {
@@ -177,7 +177,7 @@ function createDOMElementNode(
 
   if (resolved.fontSize) {
     el.style.fontSize = `${resolved.fontSize}px`;
-    el.style.lineHeight = `${Math.round(resolved.fontSize * 1.2)}px`;
+    el.style.lineHeight = "1.2";
   }
 
   return el;
