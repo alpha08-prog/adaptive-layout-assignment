@@ -88,11 +88,20 @@ const squareKiosk = defineSurface({
   minTapTarget: 48,
 });
 
-const squareKioskTight = defineSurface({
-  name: "Square Kiosk (Tight)",
+const squareKioskCompact = defineSurface({
+  name: "Square Kiosk (Compact)",
   width: 360,
   height: 240,
   safeArea: { top: 12, right: 12, bottom: 12, left: 12 },
+  touchOnly: true,
+  minTapTarget: 44,
+});
+
+const squareKioskTight = defineSurface({
+  name: "Square Kiosk (Tight)",
+  width: 320,
+  height: 170,
+  safeArea: { top: 10, right: 10, bottom: 10, left: 10 },
   touchOnly: true,
   minTapTarget: 44,
 });
@@ -293,7 +302,7 @@ describe("Phase 2: Resolver Core & Axis Derivation", () => {
 });
 
 describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", () => {
-  describe("Happy Path: All 4 canonical demo surfaces resolve without overlap or clip", () => {
+  describe("Happy Path: All canonical demo surfaces resolve without overlap or clip", () => {
     const requiredSurfaces = [
       { label: "Mobile Portrait", surface: mobilePortrait },
       { label: "Mobile Landscape", surface: mobileLandscape },
@@ -328,8 +337,27 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
     );
   });
 
-  describe("Degradation Cascade", () => {
-    it("drops lowest priority element (branding) on tight kiosk surface while keeping headline and cta intact", () => {
+  describe("Degradation Cascade: Progressive Shrink -> Reposition -> Drop", () => {
+    it("shrinks lowest priority element (branding) on moderately constrained kiosk surface without dropping it", () => {
+      const layout = resolveLayout(testAdSpec, squareKioskCompact, mockTextMeasurer);
+
+      const headline = layout.find((e) => e.id === "headline")!;
+      const cta = layout.find((e) => e.id === "cta")!;
+      const branding = layout.find((e) => e.id === "logo")!;
+
+      // All elements remain visible at this moderate constraint level
+      expect(headline.visible).toBe(true);
+      expect(cta.visible).toBe(true);
+      expect(branding.visible).toBe(true);
+
+      // Branding is shrunk rather than immediately dropped
+      expect(branding.degraded).toBe("shrunk");
+
+      // Invariant check passes
+      expect(() => assertNoOverlapOrClip(layout, squareKioskCompact)).not.toThrow();
+    });
+
+    it("drops lowest priority element (branding) cleanly on severely tight kiosk surface while keeping headline and cta intact", () => {
       const layout = resolveLayout(testAdSpec, squareKioskTight, mockTextMeasurer);
 
       const headline = layout.find((e) => e.id === "headline")!;
@@ -340,7 +368,7 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
       expect(headline.visible).toBe(true);
       expect(cta.visible).toBe(true);
 
-      // Branding (priority 3) is dropped to satisfy spatial constraints
+      // Branding (priority 3) is dropped cleanly when space cannot accommodate even shrunk branding
       expect(branding.visible).toBe(false);
       expect(branding.degraded).toBe("dropped");
 
@@ -369,6 +397,85 @@ describe("Phase 3 & 4: Degradation Cascade, Invariants & Automated Test Suite", 
       expect(logo.degraded).toBe("dropped");
 
       expect(() => assertNoOverlapOrClip(layout, tightVerticalSurface)).not.toThrow();
+    });
+  });
+
+  describe("Centering & Alignment in Vertical Layout", () => {
+    it("centers CTA button and branding horizontally in vertical portrait layout", () => {
+      const layout = resolveLayout(testAdSpec, mobilePortrait, mockTextMeasurer);
+
+      const cta = layout.find((e) => e.id === "cta")!;
+      const branding = layout.find((e) => e.id === "logo")!;
+
+      expect(cta.visible).toBe(true);
+      expect(branding.visible).toBe(true);
+
+      const safeLeft = mobilePortrait.safeArea?.left ?? 0;
+      const safeRight = mobilePortrait.safeArea?.right ?? 0;
+      const contentWidth = mobilePortrait.width - safeLeft - safeRight - 16 * 2; // stage padding = 16
+
+      const expectedCtaX = safeLeft + 16 + Math.floor((contentWidth - cta.width) / 2);
+      const expectedBrandingX = safeLeft + 16 + Math.floor((contentWidth - branding.width) / 2);
+
+      expect(cta.x).toBe(expectedCtaX);
+      expect(branding.x).toBe(expectedBrandingX);
+    });
+  });
+
+  describe("Generic Multi-Element Category Support (No Singleton Hardcoding)", () => {
+    it("resolves an ad spec with multiple heroes and multiple action buttons on horizontal-band", () => {
+      const multiElementSpec: AdSpec = defineAd({
+        elements: [
+          { id: "hero-1", type: "image", role: "hero", priority: 1, content: "https://img.com/1" },
+          { id: "hero-2", type: "image", role: "hero", priority: 2, content: "https://img.com/2" },
+          { id: "headline", type: "text", role: "primary", priority: 1, content: "Big Sale" },
+          { id: "price", type: "text", role: "secondary", priority: 2, content: "$99" },
+          { id: "cta-primary", type: "button", role: "action", priority: 1, content: "Buy Now" },
+          { id: "cta-secondary", type: "button", role: "action", priority: 2, content: "Learn More" },
+          { id: "logo", type: "image", role: "branding", priority: 3, content: "BRAND" },
+        ],
+      });
+
+      const layout = resolveLayout(multiElementSpec, broadcastLowerThird, mockTextMeasurer);
+
+      expect(() => assertNoOverlapOrClip(layout, broadcastLowerThird)).not.toThrow();
+
+      const hero1 = layout.find((e) => e.id === "hero-1")!;
+      const hero2 = layout.find((e) => e.id === "hero-2")!;
+      const cta1 = layout.find((e) => e.id === "cta-primary")!;
+      const cta2 = layout.find((e) => e.id === "cta-secondary")!;
+
+      expect(hero1.visible).toBe(true);
+      expect(hero2.visible).toBe(true);
+      expect(cta1.visible).toBe(true);
+      expect(cta2.visible).toBe(true);
+
+      // Heroes do not overlap
+      expect(hero1.x + hero1.width).toBeLessThanOrEqual(hero2.x + 0.01);
+      // CTAs do not overlap
+      expect(cta1.x + cta1.width).toBeLessThanOrEqual(cta2.x + 0.01);
+    });
+
+    it("resolves an ad spec with NO hero element into a balanced 2-column grid on square kiosk", () => {
+      const noHeroSpec: AdSpec = defineAd({
+        elements: [
+          { id: "logo", type: "image", role: "branding", priority: 3, content: "BRAND" },
+          { id: "headline", type: "text", role: "primary", priority: 1, content: "Flash Sale" },
+          { id: "price", type: "text", role: "secondary", priority: 2, content: "Only $19" },
+          { id: "cta", type: "button", role: "action", priority: 1, content: "Claim Deal" },
+        ],
+      });
+
+      const layout = resolveLayout(noHeroSpec, squareKiosk, mockTextMeasurer);
+
+      expect(() => assertNoOverlapOrClip(layout, squareKiosk)).not.toThrow();
+
+      const visible = layout.filter((e) => e.visible);
+      expect(visible.length).toBe(4);
+
+      // Elements are distributed across at least 2 columns rather than a single 1-column stack
+      const xCoords = new Set(visible.map((e) => e.x));
+      expect(xCoords.size).toBeGreaterThanOrEqual(2);
     });
   });
 

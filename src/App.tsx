@@ -88,11 +88,20 @@ const squareKiosk = defineSurface({
   minTapTarget: 48,
 });
 
-const squareKioskTight = defineSurface({
-  name: "Square Kiosk (Tight)",
+const squareKioskCompact = defineSurface({
+  name: "Square Kiosk (Compact)",
   width: 360,
   height: 240,
   safeArea: { top: 12, right: 12, bottom: 12, left: 12 },
+  touchOnly: true,
+  minTapTarget: 44,
+});
+
+const squareKioskTight = defineSurface({
+  name: "Square Kiosk (Tight)",
+  width: 320,
+  height: 170,
+  safeArea: { top: 10, right: 10, bottom: 10, left: 10 },
   touchOnly: true,
   minTapTarget: 44,
 });
@@ -127,11 +136,18 @@ const PRESET_SURFACES: { id: string; label: string; icon: string; surface: Surfa
     desc: "800 × 800 • Touch (48px) • 2D Split Grid",
   },
   {
+    id: "kiosk-compact",
+    label: "Square Kiosk (Compact)",
+    icon: "📐",
+    surface: squareKioskCompact,
+    desc: "360 × 240 • Intermediate Shrink (Branding Shrunk)",
+  },
+  {
     id: "kiosk-tight",
     label: "Square Kiosk (Tight)",
     icon: "⚠️",
     surface: squareKioskTight,
-    desc: "360 × 240 • Forced Degradation (Drops Branding)",
+    desc: "320 × 170 • Forced Degradation (Drops Branding)",
   },
   {
     id: "custom",
@@ -397,9 +413,14 @@ export function App() {
                         <span className="text-sm font-bold truncate text-slate-100">
                           {preset.label}
                         </span>
+                        {preset.id === "kiosk-compact" && (
+                          <span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
+                            Shrunk
+                          </span>
+                        )}
                         {preset.id === "kiosk-tight" && (
                           <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-bold">
-                            Degrade
+                            Dropped
                           </span>
                         )}
                       </div>

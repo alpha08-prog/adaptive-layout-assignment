@@ -235,7 +235,7 @@ export function calculateFontSize(
   }
 
   const roleConfig = ROLE_NATURAL_SIZING[element.role];
-  let size = roleConfig.baseFontSize ?? 16;
+  let size = roleConfig?.baseFontSize ?? 16;
 
   if (shrink) {
     size = Math.max(12, Math.floor(size * 0.85));
@@ -381,12 +381,85 @@ export function resolveLayout(
 }
 
 // ---------------------------------------------------------------------------
-// Cascade Implementations (Shrink -> Compact -> Drop in Priority Order)
+// Cascade Stage Definition & Pipeline
 // ---------------------------------------------------------------------------
 
+export interface CascadeStage {
+  name: string;
+  padding: number;
+  gap: number;
+  shrinkP3?: boolean;
+  repositionP3?: boolean;
+  dropP3?: boolean;
+  shrinkP2?: boolean;
+  repositionP2?: boolean;
+  dropP2?: boolean;
+  shrinkP1?: boolean;
+}
+
 /**
- * Vertical / Portrait placement with priority-based degradation cascade.
+ * 8-stage progressive degradation cascade:
+ * Natural -> Shrink P3 -> Reposition P3 -> Drop P3 -> Shrink P2 -> Reposition P2 -> Drop P2 -> Shrink P1 (Hard floors)
  */
+export const STANDARD_CASCADE_STAGES: CascadeStage[] = [
+  // 1. Natural full sizing
+  { name: "natural", padding: DEFAULT_PADDING, gap: DEFAULT_GAP },
+
+  // 2. Shrink lowest priority (P3 branding scaled down)
+  { name: "shrink-p3", padding: DEFAULT_PADDING, gap: COMPACT_GAP, shrinkP3: true },
+
+  // 3. Reposition lowest priority (P3 branding relocated to compact strip)
+  { name: "reposition-p3", padding: COMPACT_PADDING, gap: COMPACT_GAP, shrinkP3: true, repositionP3: true },
+
+  // 4. Drop lowest priority (P3 branding dropped, P1 & P2 natural)
+  { name: "drop-p3", padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true },
+
+  // 5. Shrink medium priority (P3 dropped, P2 hero/secondary shrunk)
+  { name: "shrink-p2", padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, shrinkP2: true },
+
+  // 6. Reposition medium priority (P3 dropped, P2 repositioned to compact slots)
+  { name: "reposition-p2", padding: COMPACT_PADDING, gap: MIN_GAP, dropP3: true, shrinkP2: true, repositionP2: true },
+
+  // 7. Drop medium priority (P3 and P2 dropped, P1 natural/compact)
+  { name: "drop-p2", padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true },
+
+  // 8. Shrink essential Priority 1 elements to hard constraint floors
+  { name: "shrink-p1", padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrinkP1: true },
+];
+
+/**
+ * Helper to determine an element's degradation kind under a cascade stage.
+ */
+function getElementDegradation(
+  element: AdElement,
+  stage: CascadeStage
+): DegradeKind | undefined {
+  if (element.priority === 3) {
+    if (stage.dropP3) return "dropped";
+    if (stage.repositionP3) return "repositioned";
+    if (stage.shrinkP3) return "shrunk";
+    return undefined;
+  }
+
+  if (element.priority === 2) {
+    if (stage.dropP2) return "dropped";
+    if (stage.repositionP2) return "repositioned";
+    if (stage.shrinkP2) return "shrunk";
+    return undefined;
+  }
+
+  if (element.priority === 1) {
+    if (stage.shrinkP1) return "shrunk";
+    return undefined;
+  }
+
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// 1. Vertical Layout Resolution
+// ---------------------------------------------------------------------------
+
 function resolveVerticalWithCascade(
   elements: AdElement[],
   surface: SurfaceProfile,
@@ -400,20 +473,17 @@ function resolveVerticalWithCascade(
   const availWidth = surface.width - safeLeft - safeRight;
   const availHeight = surface.height - safeTop - safeBottom;
 
-  // Progressive degradation cascade in priority order:
-  // 1. Natural sizing
-  // 2. Drop lowest priority (Priority 3, e.g. branding)
-  // 3. Drop medium priority (Priority 2, e.g. price/hero)
-  // 4. Shrink essential Priority 1 elements to hard floors
-  const cascadeStages = [
-    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: false, dropP2: false, shrink: false },
-    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true, dropP2: false, shrink: false },
-    { padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true, shrink: false },
-    { padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrink: true },
-  ];
-
-  for (const stage of cascadeStages) {
-    const layout = tryVerticalPlacement(elements, surface, stage, measure, availWidth, availHeight, safeLeft, safeTop);
+  for (const stage of STANDARD_CASCADE_STAGES) {
+    const layout = tryVerticalPlacement(
+      elements,
+      surface,
+      stage,
+      measure,
+      availWidth,
+      availHeight,
+      safeLeft,
+      safeTop
+    );
     if (layout) {
       return layout;
     }
@@ -427,7 +497,7 @@ function resolveVerticalWithCascade(
 function tryVerticalPlacement(
   elements: AdElement[],
   surface: SurfaceProfile,
-  stage: { padding: number; gap: number; dropP3: boolean; dropP2: boolean; shrink: boolean },
+  stage: CascadeStage,
   measure: TextMeasurer,
   availWidth: number,
   availHeight: number,
@@ -443,17 +513,8 @@ function tryVerticalPlacement(
   const activeElements: AdElement[] = [];
 
   for (const el of elements) {
-    if (el.priority === 3 && stage.dropP3) {
-      resolved.push({
-        id: el.id,
-        x: safeLeft + stage.padding,
-        y: safeTop + stage.padding,
-        width: 0,
-        height: 0,
-        visible: false,
-        degraded: "dropped",
-      });
-    } else if (el.priority === 2 && stage.dropP2) {
+    const degradation = getElementDegradation(el, stage);
+    if (degradation === "dropped") {
       resolved.push({
         id: el.id,
         x: safeLeft + stage.padding,
@@ -469,27 +530,35 @@ function tryVerticalPlacement(
   }
 
   const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
-  const elementBoxes: { element: AdElement; width: number; height: number; fontSize?: number; degraded?: DegradeKind }[] = [];
+  const elementBoxes: {
+    element: AdElement;
+    width: number;
+    height: number;
+    fontSize?: number;
+    degraded?: DegradeKind;
+  }[] = [];
   let requiredHeight = 0;
 
   for (const el of activeElements) {
     const roleConfig = ROLE_NATURAL_SIZING[el.role];
     const floor = hardConstraintFloor(el, surface);
-    const fontSize = calculateFontSize(el, surface, stage.shrink);
+    const degraded = getElementDegradation(el, stage);
+    const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+    const fontSize = calculateFontSize(el, surface, isShrunk);
 
     let w = contentWidth;
-    let h = roleConfigHeight(el, floor, fontSize, minTap, stage.shrink, measure);
-    let degraded: DegradeKind | undefined = stage.shrink ? "shrunk" : undefined;
+    let h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
 
     if (el.role === "hero") {
-      const share = stage.shrink ? 0.3 : (roleConfig.heightShare ?? 0.45);
+      const share = isShrunk ? 0.28 : (roleConfig?.heightShare ?? 0.45);
       const desiredH = Math.floor(contentHeight * share);
       h = Math.max(floor.minHeight, desiredH);
       w = contentWidth;
     } else if (el.type === "button" || el.role === "action") {
-      w = Math.min(contentWidth, Math.max(floor.minWidth, 180));
+      w = Math.min(contentWidth, Math.max(floor.minWidth, isShrunk ? 140 : 180));
     } else if (el.role === "branding") {
-      w = Math.min(contentWidth * 0.5, 120);
+      w = isShrunk ? Math.min(contentWidth * 0.4, 90) : Math.min(contentWidth * 0.5, 120);
+      h = isShrunk ? Math.max(floor.minHeight, 22) : h;
     }
 
     if (w > contentWidth || h > contentHeight) {
@@ -508,9 +577,19 @@ function tryVerticalPlacement(
 
   let currentY = safeTop + stage.padding;
   for (const box of elementBoxes) {
+    // Horizontally center buttons and branding if smaller than content width
+    let elementX = safeLeft + stage.padding;
+    if (
+      box.element.type === "button" ||
+      box.element.role === "action" ||
+      box.element.role === "branding"
+    ) {
+      elementX += Math.floor((contentWidth - box.width) / 2);
+    }
+
     resolved.push({
       id: box.element.id,
-      x: safeLeft + stage.padding,
+      x: elementX,
       y: currentY,
       width: box.width,
       height: box.height,
@@ -524,9 +603,10 @@ function tryVerticalPlacement(
   return resolved;
 }
 
-/**
- * Horizontal-Band placement with priority-based degradation cascade.
- */
+// ---------------------------------------------------------------------------
+// 2. Horizontal-Band Layout Resolution (Generic Multi-Element Support)
+// ---------------------------------------------------------------------------
+
 function resolveHorizontalBandWithCascade(
   elements: AdElement[],
   surface: SurfaceProfile,
@@ -540,15 +620,17 @@ function resolveHorizontalBandWithCascade(
   const availWidth = surface.width - safeLeft - safeRight;
   const availHeight = surface.height - safeTop - safeBottom;
 
-  const cascadeStages = [
-    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: false, dropP2: false, shrink: false },
-    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true, dropP2: false, shrink: false },
-    { padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true, shrink: false },
-    { padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrink: true },
-  ];
-
-  for (const stage of cascadeStages) {
-    const layout = tryHorizontalPlacement(elements, surface, stage, measure, availWidth, availHeight, safeLeft, safeTop);
+  for (const stage of STANDARD_CASCADE_STAGES) {
+    const layout = tryHorizontalPlacement(
+      elements,
+      surface,
+      stage,
+      measure,
+      availWidth,
+      availHeight,
+      safeLeft,
+      safeTop
+    );
     if (layout) {
       return layout;
     }
@@ -562,7 +644,7 @@ function resolveHorizontalBandWithCascade(
 function tryHorizontalPlacement(
   elements: AdElement[],
   surface: SurfaceProfile,
-  stage: { padding: number; gap: number; dropP3: boolean; dropP2: boolean; shrink: boolean },
+  stage: CascadeStage,
   measure: TextMeasurer,
   availWidth: number,
   availHeight: number,
@@ -578,17 +660,8 @@ function tryHorizontalPlacement(
   const activeElements: AdElement[] = [];
 
   for (const el of elements) {
-    if (el.priority === 3 && stage.dropP3) {
-      resolved.push({
-        id: el.id,
-        x: safeLeft + stage.padding,
-        y: safeTop + stage.padding,
-        width: 0,
-        height: 0,
-        visible: false,
-        degraded: "dropped",
-      });
-    } else if (el.priority === 2 && stage.dropP2) {
+    const degradation = getElementDegradation(el, stage);
+    if (degradation === "dropped") {
       resolved.push({
         id: el.id,
         x: safeLeft + stage.padding,
@@ -603,83 +676,115 @@ function tryHorizontalPlacement(
     }
   }
 
-  const heroElement = activeElements.find((e) => e.role === "hero");
-  const actionElement = activeElements.find((e) => e.role === "action");
-  const brandingElement = activeElements.find((e) => e.role === "branding");
-  const textElements = activeElements.filter((e) => e.role === "primary" || e.role === "secondary");
+  // Categorize elements generically (supporting 0, 1, or multiple per category)
+  const brandingElements = activeElements.filter((e) => e.role === "branding");
+  const visualElements = activeElements.filter(
+    (e) => e.role === "hero" || (e.type === "image" && e.role !== "branding")
+  );
+  const actionElements = activeElements.filter(
+    (e) => e.role === "action" || e.type === "button"
+  );
+  const textElements = activeElements.filter(
+    (e) => !brandingElements.includes(e) && !visualElements.includes(e) && !actionElements.includes(e)
+  );
 
   const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
   let currentX = safeLeft + stage.padding;
 
-  // 1. Branding on far left if active
-  if (brandingElement) {
-    const floor = hardConstraintFloor(brandingElement, surface);
-    const fontSize = calculateFontSize(brandingElement, surface, stage.shrink);
-    const bw = Math.max(floor.minWidth, Math.min(100, Math.floor(contentWidth * 0.12)));
-    const bh = Math.max(floor.minHeight, Math.min(contentHeight, stage.shrink ? 24 : 36));
+  // 1. Place Branding Elements on the Left
+  for (const brandingEl of brandingElements) {
+    const floor = hardConstraintFloor(brandingEl, surface);
+    const degraded = getElementDegradation(brandingEl, stage);
+    const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+    const fontSize = calculateFontSize(brandingEl, surface, isShrunk);
+
+    const bw = Math.max(floor.minWidth, Math.min(100, Math.floor(contentWidth * (isShrunk ? 0.09 : 0.12))));
+    const bh = Math.max(floor.minHeight, Math.min(contentHeight, isShrunk ? 24 : 36));
     const by = safeTop + stage.padding + Math.floor((contentHeight - bh) / 2);
 
     resolved.push({
-      id: brandingElement.id,
+      id: brandingEl.id,
       x: currentX,
       y: by,
       width: bw,
       height: bh,
       fontSize,
       visible: true,
-      degraded: stage.shrink ? "shrunk" : undefined,
+      degraded,
     });
     currentX += bw + stage.gap;
   }
 
-  // 2. Hero image
-  if (heroElement) {
-    const floor = hardConstraintFloor(heroElement, surface);
-    const heroH = contentHeight;
-    const heroW = Math.max(
-      floor.minWidth,
-      Math.min(Math.floor(contentHeight * (16 / 9)), Math.floor(contentWidth * 0.25))
+  // 2. Place Visual/Hero Elements
+  if (visualElements.length > 0) {
+    const totalVisualWidthShare = Math.min(
+      contentWidth * (stage.shrinkP2 ? 0.2 : 0.28),
+      contentHeight * (16 / 9) * visualElements.length
+    );
+    const singleVisualWidth = Math.floor(
+      (totalVisualWidthShare - (visualElements.length - 1) * stage.gap) / visualElements.length
     );
 
-    resolved.push({
-      id: heroElement.id,
-      x: currentX,
-      y: safeTop + stage.padding,
-      width: heroW,
-      height: heroH,
-      visible: true,
-      degraded: stage.shrink ? "shrunk" : undefined,
-    });
-    currentX += heroW + stage.gap;
+    for (const visualEl of visualElements) {
+      const floor = hardConstraintFloor(visualEl, surface);
+      const degraded = getElementDegradation(visualEl, stage);
+      const vw = Math.max(floor.minWidth, singleVisualWidth);
+      const vh = contentHeight;
+
+      if (vw > contentWidth) return null;
+
+      resolved.push({
+        id: visualEl.id,
+        x: currentX,
+        y: safeTop + stage.padding,
+        width: vw,
+        height: vh,
+        visible: true,
+        degraded,
+      });
+      currentX += vw + stage.gap;
+    }
   }
 
-  // 3. Action button on the far right
+  // 3. Calculate and Reserve Right Action Elements Area
+  const actionBoxes: ResolvedElement[] = [];
   let rightReservedWidth = 0;
-  let actionBox: ResolvedElement | null = null;
 
-  if (actionElement) {
-    const floor = hardConstraintFloor(actionElement, surface);
-    const fontSize = calculateFontSize(actionElement, surface, stage.shrink);
-    const aw = Math.max(floor.minWidth, minTap, stage.shrink ? 120 : 150);
-    const ah = Math.max(floor.minHeight, minTap, Math.min(contentHeight, 48));
-    const ax = safeLeft + stage.padding + contentWidth - aw;
-    const ay = safeTop + stage.padding + Math.floor((contentHeight - ah) / 2);
+  if (actionElements.length > 0) {
+    let actionCursorX = safeLeft + stage.padding + contentWidth;
 
-    actionBox = {
-      id: actionElement.id,
-      x: ax,
-      y: ay,
-      width: aw,
-      height: ah,
-      fontSize,
-      visible: true,
-      degraded: stage.shrink ? "shrunk" : undefined,
-    };
-    rightReservedWidth = aw + stage.gap;
+    for (let i = actionElements.length - 1; i >= 0; i--) {
+      const actionEl = actionElements[i]!;
+      const floor = hardConstraintFloor(actionEl, surface);
+      const degraded = getElementDegradation(actionEl, stage);
+      const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+      const fontSize = calculateFontSize(actionEl, surface, isShrunk);
+
+      const aw = Math.max(floor.minWidth, minTap, isShrunk ? 120 : 150);
+      const ah = Math.max(floor.minHeight, minTap, Math.min(contentHeight, 48));
+      const ax = actionCursorX - aw;
+      const ay = safeTop + stage.padding + Math.floor((contentHeight - ah) / 2);
+
+      actionBoxes.unshift({
+        id: actionEl.id,
+        x: ax,
+        y: ay,
+        width: aw,
+        height: ah,
+        fontSize,
+        visible: true,
+        degraded,
+      });
+
+      actionCursorX -= aw + stage.gap;
+      rightReservedWidth += aw + (i > 0 ? stage.gap : 0);
+    }
   }
 
-  // 4. Middle flexible text area
-  const middleWidth = safeLeft + stage.padding + contentWidth - rightReservedWidth - currentX;
+  // 4. Middle Flexible Text Area
+  const rightBoundary = safeLeft + stage.padding + contentWidth - rightReservedWidth - (actionElements.length > 0 ? stage.gap : 0);
+  const middleWidth = rightBoundary - currentX;
+
   if (middleWidth < 40 && textElements.length > 0) {
     return null;
   }
@@ -687,7 +792,9 @@ function tryHorizontalPlacement(
   let textY = safeTop + stage.padding;
   for (const textEl of textElements) {
     const floor = hardConstraintFloor(textEl, surface);
-    const fontSize = calculateFontSize(textEl, surface, stage.shrink);
+    const degraded = getElementDegradation(textEl, stage);
+    const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+    const fontSize = calculateFontSize(textEl, surface, isShrunk);
     const dim = measure(textEl.content ?? textEl.id, fontSize ?? 16);
     const th = Math.max(floor.minHeight, dim.height + 2);
 
@@ -703,21 +810,22 @@ function tryHorizontalPlacement(
       height: th,
       fontSize,
       visible: true,
-      degraded: stage.shrink ? "shrunk" : undefined,
+      degraded,
     });
     textY += th + 4;
   }
 
-  if (actionBox) {
-    resolved.push(actionBox);
+  for (const box of actionBoxes) {
+    resolved.push(box);
   }
 
   return resolved;
 }
 
-/**
- * Grid / 2D split-pane placement with priority-based degradation cascade.
- */
+// ---------------------------------------------------------------------------
+// 3. Grid / 2D Split-Pane Layout Resolution (Generic Multi-Element Support)
+// ---------------------------------------------------------------------------
+
 function resolveGridWithCascade(
   elements: AdElement[],
   surface: SurfaceProfile,
@@ -731,15 +839,17 @@ function resolveGridWithCascade(
   const availWidth = surface.width - safeLeft - safeRight;
   const availHeight = surface.height - safeTop - safeBottom;
 
-  const cascadeStages = [
-    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: false, dropP2: false, shrink: false },
-    { padding: DEFAULT_PADDING, gap: DEFAULT_GAP, dropP3: true, dropP2: false, shrink: false },
-    { padding: COMPACT_PADDING, gap: COMPACT_GAP, dropP3: true, dropP2: true, shrink: false },
-    { padding: MIN_PADDING, gap: MIN_GAP, dropP3: true, dropP2: true, shrink: true },
-  ];
-
-  for (const stage of cascadeStages) {
-    const layout = tryGridPlacement(elements, surface, stage, measure, availWidth, availHeight, safeLeft, safeTop);
+  for (const stage of STANDARD_CASCADE_STAGES) {
+    const layout = tryGridPlacement(
+      elements,
+      surface,
+      stage,
+      measure,
+      availWidth,
+      availHeight,
+      safeLeft,
+      safeTop
+    );
     if (layout) {
       return layout;
     }
@@ -753,7 +863,7 @@ function resolveGridWithCascade(
 function tryGridPlacement(
   elements: AdElement[],
   surface: SurfaceProfile,
-  stage: { padding: number; gap: number; dropP3: boolean; dropP2: boolean; shrink: boolean },
+  stage: CascadeStage,
   measure: TextMeasurer,
   availWidth: number,
   availHeight: number,
@@ -769,17 +879,8 @@ function tryGridPlacement(
   const activeElements: AdElement[] = [];
 
   for (const el of elements) {
-    if (el.priority === 3 && stage.dropP3) {
-      resolved.push({
-        id: el.id,
-        x: safeLeft + stage.padding,
-        y: safeTop + stage.padding,
-        width: 0,
-        height: 0,
-        visible: false,
-        degraded: "dropped",
-      });
-    } else if (el.priority === 2 && stage.dropP2) {
+    const degradation = getElementDegradation(el, stage);
+    if (degradation === "dropped") {
       resolved.push({
         id: el.id,
         x: safeLeft + stage.padding,
@@ -794,35 +895,46 @@ function tryGridPlacement(
     }
   }
 
-  const heroElement = activeElements.find((e) => e.role === "hero");
-  const nonHeroElements = activeElements.filter((e) => e !== heroElement);
+  const visualElements = activeElements.filter(
+    (e) => e.role === "hero" || (e.type === "image" && e.role !== "branding")
+  );
+  const nonVisualElements = activeElements.filter((e) => !visualElements.includes(e));
   const minTap = surface.touchOnly ? (surface.minTapTarget ?? MIN_TOUCH_TARGET_DEFAULT) : 0;
 
-  if (heroElement) {
-    const heroFloor = hardConstraintFloor(heroElement, surface);
-    const heroShare = stage.shrink ? 0.4 : 0.48;
-    const heroWidth = Math.max(heroFloor.minWidth, Math.floor(contentWidth * heroShare));
-    const heroHeight = contentHeight;
+  if (visualElements.length > 0) {
+    // 2D Split Pane: Visuals on Left Pane, Content Column on Right Pane
+    const isShrunkHero = Boolean(stage.shrinkP2 || stage.repositionP2);
+    const heroShare = isShrunkHero ? 0.38 : 0.48;
+    const totalVisualWidth = Math.floor(contentWidth * heroShare);
 
-    const colX = safeLeft + stage.padding + heroWidth + stage.gap;
-    const colWidth = contentWidth - heroWidth - stage.gap;
+    const colX = safeLeft + stage.padding + totalVisualWidth + stage.gap;
+    const colWidth = contentWidth - totalVisualWidth - stage.gap;
 
     if (colWidth < 50) return null;
 
-    const elementBoxes: { element: AdElement; width: number; height: number; fontSize?: number; degraded?: DegradeKind }[] = [];
+    // Check right column elements fit
+    const elementBoxes: {
+      element: AdElement;
+      width: number;
+      height: number;
+      fontSize?: number;
+      degraded?: DegradeKind;
+    }[] = [];
     let requiredColHeight = 0;
 
-    for (const el of nonHeroElements) {
+    for (const el of nonVisualElements) {
       const floor = hardConstraintFloor(el, surface);
-      const fontSize = calculateFontSize(el, surface, stage.shrink);
+      const degraded = getElementDegradation(el, stage);
+      const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+      const fontSize = calculateFontSize(el, surface, isShrunk);
       let w = colWidth;
-      let h = roleConfigHeight(el, floor, fontSize, minTap, stage.shrink, measure);
-      let degraded: DegradeKind | undefined = stage.shrink ? "shrunk" : undefined;
+      let h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
 
       if (el.role === "branding") {
-        w = Math.min(colWidth * 0.6, 100);
+        w = isShrunk ? Math.min(colWidth * 0.5, 80) : Math.min(colWidth * 0.6, 100);
+        h = isShrunk ? 20 : h;
       } else if (el.type === "button" || el.role === "action") {
-        w = Math.min(colWidth, Math.max(floor.minWidth, 160));
+        w = Math.min(colWidth, Math.max(floor.minWidth, isShrunk ? 130 : 160));
       }
 
       elementBoxes.push({ element: el, width: w, height: h, fontSize, degraded });
@@ -835,18 +947,33 @@ function tryGridPlacement(
       return null;
     }
 
-    // Place hero
-    resolved.push({
-      id: heroElement.id,
-      x: safeLeft + stage.padding,
-      y: safeTop + stage.padding,
-      width: heroWidth,
-      height: heroHeight,
-      visible: true,
-      degraded: stage.shrink ? "shrunk" : undefined,
-    });
+    // Place Visual Elements in Left Pane (divide height if multiple visuals exist)
+    const singleVisualHeight = Math.floor(
+      (contentHeight - (visualElements.length - 1) * stage.gap) / visualElements.length
+    );
 
-    // Place non-hero column
+    let visualY = safeTop + stage.padding;
+    for (const visualEl of visualElements) {
+      const floor = hardConstraintFloor(visualEl, surface);
+      const degraded = getElementDegradation(visualEl, stage);
+
+      if (totalVisualWidth < floor.minWidth || singleVisualHeight < floor.minHeight) {
+        return null;
+      }
+
+      resolved.push({
+        id: visualEl.id,
+        x: safeLeft + stage.padding,
+        y: visualY,
+        width: totalVisualWidth,
+        height: singleVisualHeight,
+        visible: true,
+        degraded,
+      });
+      visualY += singleVisualHeight + stage.gap;
+    }
+
+    // Place Content Elements in Right Pane
     let colY = safeTop + stage.padding;
     for (const box of elementBoxes) {
       resolved.push({
@@ -862,29 +989,87 @@ function tryGridPlacement(
       colY += box.height + stage.gap;
     }
   } else {
-    // Single column stack without hero
-    let currentY = safeTop + stage.padding;
-    for (const el of nonHeroElements) {
-      const floor = hardConstraintFloor(el, surface);
-      const fontSize = calculateFontSize(el, surface, stage.shrink);
-      const h = roleConfigHeight(el, floor, fontSize, minTap, stage.shrink, measure);
-      const w = contentWidth;
+    // No visual element: On a square/balanced grid surface, arrange into 2 balanced side-by-side columns if possible
+    const canDoTwoColumns = contentWidth >= 280 && nonVisualElements.length >= 2;
 
-      if (currentY + h > safeTop + stage.padding + contentHeight + 0.01) {
-        return null;
+    if (canDoTwoColumns) {
+      const colW = Math.floor((contentWidth - stage.gap) / 2);
+      const half = Math.ceil(nonVisualElements.length / 2);
+      const leftElements = nonVisualElements.slice(0, half);
+      const rightElements = nonVisualElements.slice(half);
+
+      let leftY = safeTop + stage.padding;
+      for (const el of leftElements) {
+        const floor = hardConstraintFloor(el, surface);
+        const degraded = getElementDegradation(el, stage);
+        const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+        const fontSize = calculateFontSize(el, surface, isShrunk);
+        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+
+        if (leftY + h > safeTop + stage.padding + contentHeight + 0.01) return null;
+
+        resolved.push({
+          id: el.id,
+          x: safeLeft + stage.padding,
+          y: leftY,
+          width: colW,
+          height: h,
+          fontSize,
+          visible: true,
+          degraded: degraded ?? (stage.repositionP2 || stage.repositionP3 ? "repositioned" : undefined),
+        });
+        leftY += h + stage.gap;
       }
 
-      resolved.push({
-        id: el.id,
-        x: safeLeft + stage.padding,
-        y: currentY,
-        width: w,
-        height: h,
-        fontSize,
-        visible: true,
-        degraded: stage.shrink ? "shrunk" : undefined,
-      });
-      currentY += h + stage.gap;
+      let rightY = safeTop + stage.padding;
+      for (const el of rightElements) {
+        const floor = hardConstraintFloor(el, surface);
+        const degraded = getElementDegradation(el, stage);
+        const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+        const fontSize = calculateFontSize(el, surface, isShrunk);
+        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+
+        if (rightY + h > safeTop + stage.padding + contentHeight + 0.01) return null;
+
+        resolved.push({
+          id: el.id,
+          x: safeLeft + stage.padding + colW + stage.gap,
+          y: rightY,
+          width: colW,
+          height: h,
+          fontSize,
+          visible: true,
+          degraded: degraded ?? (stage.repositionP2 || stage.repositionP3 ? "repositioned" : undefined),
+        });
+        rightY += h + stage.gap;
+      }
+    } else {
+      // Single column fallback for narrow grid
+      let currentY = safeTop + stage.padding;
+      for (const el of nonVisualElements) {
+        const floor = hardConstraintFloor(el, surface);
+        const degraded = getElementDegradation(el, stage);
+        const isShrunk = Boolean(degraded === "shrunk" || degraded === "repositioned" || stage.shrinkP1);
+        const fontSize = calculateFontSize(el, surface, isShrunk);
+        const h = roleConfigHeight(el, floor, fontSize, minTap, isShrunk, measure);
+        const w = contentWidth;
+
+        if (currentY + h > safeTop + stage.padding + contentHeight + 0.01) {
+          return null;
+        }
+
+        resolved.push({
+          id: el.id,
+          x: safeLeft + stage.padding,
+          y: currentY,
+          width: w,
+          height: h,
+          fontSize,
+          visible: true,
+          degraded,
+        });
+        currentY += h + stage.gap;
+      }
     }
   }
 
@@ -902,13 +1087,13 @@ function roleConfigHeight(
   const roleConfig = ROLE_NATURAL_SIZING[el.role];
   if (el.type === "text") {
     const dim = measure(el.content ?? el.id, fontSize ?? 16);
-    return Math.max(floor.minHeight, shrink ? 0 : roleConfig.minHeight, dim.height + 4);
+    return Math.max(floor.minHeight, shrink ? 0 : (roleConfig?.minHeight ?? 24), dim.height + 4);
   }
   if (el.type === "button" || el.role === "action") {
-    return Math.max(floor.minHeight, minTap, shrink ? 40 : roleConfig.minHeight);
+    return Math.max(floor.minHeight, minTap, shrink ? 40 : (roleConfig?.minHeight ?? 44));
   }
   if (el.role === "branding") {
-    return Math.max(floor.minHeight, shrink ? 20 : roleConfig.minHeight);
+    return Math.max(floor.minHeight, shrink ? 20 : (roleConfig?.minHeight ?? 30));
   }
-  return Math.max(floor.minHeight, shrink ? 0 : roleConfig.minHeight);
+  return Math.max(floor.minHeight, shrink ? 0 : (roleConfig?.minHeight ?? 24));
 }
