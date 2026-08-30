@@ -102,7 +102,7 @@ function wrapText(
  * - Direct mapping from ResolvedElement (x, y, width, height, fontSize).
  * - Zero layout decisions made inside the renderer.
  * - Elements with visible: false are completely skipped.
- * - Same visual hierarchy and chrome as the DOM renderer.
+ * - Same visual hierarchy and clean chrome as the DOM renderer.
  */
 export function renderToCanvas(
   layout: ResolvedLayout,
@@ -115,15 +115,11 @@ export function renderToCanvas(
 
   // 1. Clear and render canvas background
   ctx.save();
-  const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-  bgGrad.addColorStop(0, "#020617"); // slate-950
-  bgGrad.addColorStop(0.5, "#0f172a"); // slate-900
-  bgGrad.addColorStop(1, "#020617"); // slate-950
-  ctx.fillStyle = bgGrad;
+  ctx.fillStyle = "#09090b"; // zinc-950
   ctx.fillRect(0, 0, width, height);
 
   // Surface boundary border
-  ctx.strokeStyle = "rgba(51, 65, 85, 0.6)"; // slate-700/60
+  ctx.strokeStyle = "rgba(63, 63, 70, 0.6)"; // zinc-700/60
   ctx.lineWidth = 1;
   ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
   ctx.restore();
@@ -136,25 +132,25 @@ export function renderToCanvas(
 
     if (safeW > 0 && safeH > 0) {
       ctx.save();
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.5)"; // emerald-500/50
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.4)"; // emerald-500/40
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
       ctx.strokeRect(left, top, safeW, safeH);
       ctx.setLineDash([]);
 
       // Safe area badge
-      ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-      drawRoundedRect(ctx, left + 6, top + 6, 76, 18, 4);
+      ctx.fillStyle = "rgba(24, 24, 27, 0.95)";
+      drawRoundedRect(ctx, left + 6, top + 6, 72, 18, 4);
       ctx.fill();
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.6)";
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      ctx.fillStyle = "#6ee7b7"; // emerald-300
+      ctx.fillStyle = "#34d399"; // emerald-400
       ctx.font = "bold 9px ui-monospace, monospace";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillText("SAFE AREA", left + 12, top + 15);
+      ctx.fillText("SAFE AREA", left + 10, top + 15);
       ctx.restore();
     }
   }
@@ -220,49 +216,40 @@ function renderCanvasElement(
 
         ctx.drawImage(img, sX, sY, sWidth, sHeight, x, y, width, height);
       } else {
-        // Fallback gradient hero visual placeholder
-        const heroGrad = ctx.createLinearGradient(x, y, x + width, y + height);
-        heroGrad.addColorStop(0, "#1e1b4b"); // indigo-950
-        heroGrad.addColorStop(0.5, "#0f172a"); // slate-900
-        heroGrad.addColorStop(1, "#020617"); // slate-950
-        ctx.fillStyle = heroGrad;
+        // Fallback hero visual placeholder
+        ctx.fillStyle = "#18181b"; // zinc-900
         ctx.fillRect(x, y, width, height);
 
         // Icon representation
-        ctx.fillStyle = "#818cf8"; // indigo-400
-        ctx.font = `bold ${Math.max(12, Math.min(24, Math.floor(height * 0.2)))}px sans-serif`;
+        ctx.fillStyle = "#71717a"; // zinc-500
+        ctx.font = `bold ${Math.max(12, Math.min(20, Math.floor(height * 0.2)))}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("✦ HERO VISUAL", x + width / 2, y + height / 2);
+        ctx.fillText("IMAGE VISUAL", x + width / 2, y + height / 2);
       }
 
       // Border chrome
-      ctx.strokeStyle = "rgba(51, 65, 85, 0.7)";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(63, 63, 70, 0.7)";
+      ctx.lineWidth = 1;
       drawRoundedRect(ctx, x, y, width, height, 12);
       ctx.stroke();
       break;
     }
 
     case "action": {
-      // CTA Button with gradient, shadow, and centered text
+      // Clean CTA Button
       drawRoundedRect(ctx, x, y, width, height, 8);
-
-      const btnGrad = ctx.createLinearGradient(x, y, x + width, y);
-      btnGrad.addColorStop(0, "#2563eb"); // blue-600
-      btnGrad.addColorStop(0.5, "#4f46e5"); // indigo-600
-      btnGrad.addColorStop(1, "#4338ca"); // indigo-700
-      ctx.fillStyle = btnGrad;
+      ctx.fillStyle = "#2563eb"; // blue-600
       ctx.fill();
 
       // Border highlight
-      ctx.strokeStyle = "rgba(165, 180, 252, 0.35)"; // indigo-300/35
+      ctx.strokeStyle = "rgba(96, 165, 250, 0.4)";
       ctx.lineWidth = 1;
       ctx.stroke();
 
       // Centered Button text
       ctx.fillStyle = "#ffffff";
-      ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(content, x + width / 2, y + height / 2, width - 16);
@@ -270,34 +257,32 @@ function renderCanvasElement(
     }
 
     case "primary": {
-      // Primary Headline with multi-line wrapping and robust clipping
-      ctx.fillStyle = "#f8fafc"; // slate-50
-      ctx.font = `800 ${fontSize}px system-ui, -apple-system, sans-serif`;
+      // Primary Headline with multi-line wrapping and clean clipping
+      ctx.fillStyle = "#fafafa"; // zinc-50
+      ctx.font = `700 ${fontSize}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
 
       const lineHeight = Math.round(fontSize * 1.2);
       const lines = wrapText(ctx, content, width);
+
+      // Render up to max visible lines
       const maxLines = Math.max(1, Math.floor(height / lineHeight));
-      const renderedLines = lines.slice(0, maxLines);
-
-      let currentY = y + Math.max(0, (height - renderedLines.length * lineHeight) / 2);
-
-      for (let i = 0; i < renderedLines.length; i++) {
-        let line = renderedLines[i]!;
-        if (i === renderedLines.length - 1 && lines.length > maxLines) {
-          line = `${line.replace(/\.+$/, "")}...`;
+      for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
+        let lineText = lines[i]!;
+        if (i === maxLines - 1 && lines.length > maxLines) {
+          // Truncate last visible line if text overflows
+          lineText = `${lineText}...`;
         }
-        ctx.fillText(line, x, currentY, width);
-        currentY += lineHeight;
+        ctx.fillText(lineText, x, y + i * lineHeight, width);
       }
       break;
     }
 
     case "secondary": {
-      // Secondary Price / Feature
+      // Secondary text / price
       ctx.fillStyle = "#34d399"; // emerald-400
-      ctx.font = `700 ${fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(content, x, y + height / 2, width);
@@ -305,27 +290,26 @@ function renderCanvasElement(
     }
 
     case "branding": {
-      // Branding badge pill
+      // Branding badge
       drawRoundedRect(ctx, x, y, width, height, 6);
-      ctx.fillStyle = "rgba(30, 41, 59, 0.9)"; // slate-800/90
+      ctx.fillStyle = "rgba(39, 39, 42, 0.9)"; // zinc-800/90
       ctx.fill();
 
-      ctx.strokeStyle = "rgba(71, 85, 105, 0.8)"; // slate-600/80
+      ctx.strokeStyle = "rgba(82, 82, 91, 0.8)"; // zinc-600/80
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      ctx.fillStyle = "#cbd5e1"; // slate-300
-      ctx.font = `900 ${fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = "#d4d4d8"; // zinc-300
+      ctx.font = `600 ${fontSize}px ui-monospace, monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(content.toUpperCase(), x + width / 2, y + height / 2, width - 12);
+      ctx.fillText(content.toUpperCase(), x + width / 2, y + height / 2, width - 8);
       break;
     }
 
     default: {
-      // General text fallback
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = "#d4d4d8";
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(content, x, y + height / 2, width);
@@ -337,21 +321,7 @@ function renderCanvasElement(
 }
 
 /**
- * Creates and returns an HTMLCanvasElement rendered with the resolved layout at native device pixel ratio.
- */
-export function createCanvasRenderer(
-  layout: ResolvedLayout,
-  spec: AdSpec,
-  surface: SurfaceProfile,
-  options: RenderCanvasOptions = {}
-): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  renderLayoutToCanvasElement(canvas, layout, spec, surface, options);
-  return canvas;
-}
-
-/**
- * Renders or updates a ResolvedLayout onto an HTMLCanvasElement with high-DPI scaling.
+ * Creates and appends a styled Canvas element with high-DPI scaling.
  */
 export function renderLayoutToCanvasElement(
   canvas: HTMLCanvasElement,
@@ -361,8 +331,7 @@ export function renderLayoutToCanvasElement(
   options: RenderCanvasOptions = {}
 ): void {
   const dpr = options.devicePixelRatio ?? (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
-  const width = surface.width;
-  const height = surface.height;
+  const { width, height } = surface;
 
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);

@@ -106,15 +106,15 @@ function createDOMElementNode(
     el = document.createElement("button");
     el.setAttribute("type", "button");
     el.className =
-      "bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 active:scale-98 text-white font-bold rounded-lg shadow-lg shadow-indigo-600/30 flex items-center justify-center cursor-pointer transition-all duration-150 text-center select-none overflow-hidden text-ellipsis whitespace-nowrap px-4 border border-indigo-400/20";
+      "bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-lg shadow-sm flex items-center justify-center cursor-pointer transition-colors duration-150 text-center select-none overflow-hidden text-ellipsis whitespace-nowrap px-4";
     const span = document.createElement("span");
-    span.className = "truncate drop-shadow";
+    span.className = "truncate";
     span.textContent = content;
     el.appendChild(span);
   } else if (role === "hero") {
     el = document.createElement("div");
     el.className =
-      "rounded-xl overflow-hidden shadow-lg bg-slate-900 border border-slate-700/60 flex items-center justify-center relative";
+      "rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center relative";
 
     if (type === "image" && content.startsWith("http")) {
       const img = document.createElement("img");
@@ -125,19 +125,19 @@ function createDOMElementNode(
     } else {
       const placeholder = document.createElement("div");
       placeholder.className =
-        "w-full h-full bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 flex flex-col items-center justify-center p-3 text-center";
+        "w-full h-full bg-zinc-900 flex flex-col items-center justify-center p-3 text-center";
       placeholder.innerHTML = `
-        <svg class="w-8 h-8 text-indigo-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg class="w-7 h-7 text-zinc-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <span class="text-xs font-semibold text-slate-300 truncate max-w-full">${content}</span>
+        <span class="text-xs font-medium text-zinc-400 truncate max-w-full">${content}</span>
       `;
       el.appendChild(placeholder);
     }
   } else if (role === "primary") {
     el = document.createElement("div");
     el.className =
-      "font-extrabold text-slate-50 flex items-center tracking-tight overflow-hidden text-ellipsis drop-shadow-sm";
+      "font-bold text-zinc-50 flex items-center tracking-tight overflow-hidden text-ellipsis";
     const span = document.createElement("span");
     span.className = "line-clamp-2 leading-tight";
     span.textContent = content;
@@ -145,7 +145,7 @@ function createDOMElementNode(
   } else if (role === "secondary") {
     el = document.createElement("div");
     el.className =
-      "font-bold text-emerald-400 flex items-center tracking-wide overflow-hidden text-ellipsis drop-shadow-sm";
+      "font-semibold text-emerald-400 flex items-center tracking-wide overflow-hidden text-ellipsis";
     const span = document.createElement("span");
     span.className = "truncate";
     span.textContent = content;
@@ -153,14 +153,14 @@ function createDOMElementNode(
   } else if (role === "branding") {
     el = document.createElement("div");
     el.className =
-      "font-black tracking-widest text-slate-300 bg-slate-800/90 backdrop-blur px-2.5 py-1 rounded-md border border-slate-700/80 flex items-center justify-center text-center overflow-hidden uppercase shadow-sm";
+      "font-semibold tracking-wider text-zinc-300 bg-zinc-800/90 px-2.5 py-1 rounded-md border border-zinc-700/80 flex items-center justify-center text-center overflow-hidden uppercase text-xs";
     const span = document.createElement("span");
     span.className = "truncate";
     span.textContent = content;
     el.appendChild(span);
   } else {
     el = document.createElement("div");
-    el.className = "text-slate-300 flex items-center overflow-hidden text-ellipsis";
+    el.className = "text-zinc-300 flex items-center overflow-hidden text-ellipsis";
     const span = document.createElement("span");
     span.className = "truncate";
     span.textContent = content;
