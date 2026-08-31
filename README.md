@@ -293,12 +293,24 @@ This repository provides both `render-dom.ts` and `render-canvas.ts` as proof of
 
 ## ⏱️ Time Spent Breakdown
 
-| Component / Area | Time Spent | Focus |
-| :--- | :--- | :--- |
-| **Type Contracts & Validators** (`spec.ts`, `surfaces.ts`) | ~1.0h | Conditional compile-time types & runtime invariant guards |
-| **Constraint Resolver Core** (`resolver.ts`) | ~2.5h | Continuous axis derivation, role natural sizing, multi-element support |
-| **8-Stage Degradation Cascade & Invariants** (`resolver.ts`) | ~2.5h | Priority relaxation ladder, hard constraint floors, collision checks |
-| **Automated Vitest Suite** (`resolver.test.ts`) | ~1.5h | 43 headless unit tests covering edge cases & unseen surface generalization |
-| **DOM & Canvas Renderers** (`render-dom.ts`, `render-canvas.ts`) | ~1.5h | Pure coordinate projection, high-DPI canvas scaling |
-| **Interactive Studio UI & Documentation** (`App.tsx`, `README.md`) | ~1.5h | Live surface switcher, custom playground, step-by-step documentation |
-| **Total** | **~10.5h** | |
+**Total Time:** ~14 hours (spread over 4 days within the 3–5 day timeline)
+
+| Phase / Day | Time Spent | Focus & Activities |
+| :--- | :---: | :--- |
+| **Day 1: Architecture & Type System** | ~3.5h | Designed the 4-layer resolution pipeline; implemented compile-time conditional type intersections (`defineSurface`) and runtime invariant validators (`defineAd`). Researched continuous aspect-ratio topology derivation. |
+| **Day 2: Constraint Resolver & Cascade** | ~4.5h | Implemented the 8-stage progressive degradation cascade (`Shrink` → `Reposition` → `Drop`), hard constraint floors (`hardConstraintFloor`), text measurement heuristics, and structural collision detection (`assertNoOverlapOrClip`). |
+| **Day 3: Automated Testing & Edge Cases** | ~2.5h | Authored 43 Vitest unit tests covering canonical surfaces, extreme/micro displays, multi-element groups, impossible constraint rejections, and unseen surface generalization. |
+| **Day 4: Renderers, Interactive UI & Docs** | ~3.5h | Implemented zero-layout DOM and Canvas 2D renderers; built the interactive demo studio (`App.tsx`) with preset switcher, degradation toggles, and live custom surface builder; documented algorithm with number-traced walkthroughs in `README.md` and `ARCHITECTURE.md`. |
+
+---
+
+## 🤖 AI Usage & Tooling Disclosure
+
+In accordance with assignment guidelines, AI tooling was leveraged transparently during this project:
+
+- **Primary Tool**: **Google Antigravity (AGY)**
+- **Scope & Application**:
+  - **Edge-Case Ideation**: Stress-testing constraint boundaries (e.g., asymmetric safe areas exceeding surface bounds, touch floors under extreme degradation, far-viewing font multipliers).
+  - **Test Fixture Generation**: Scaffolding repetitive test cases for unseen surfaces (automotive HUD, smart fridge, jumbotron) in `resolver.test.ts`.
+  - **Documentation & Diagramming**: Formatted markdown tables, ASCII pipeline flowcharts, and number-traced walkthroughs in `README.md` and `ARCHITECTURE.md`.
+  
